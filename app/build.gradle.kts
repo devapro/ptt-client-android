@@ -63,6 +63,7 @@ dependencies {
     implementation(libs.network.ktor.core)
     implementation(libs.network.ktor.cio)
     implementation(libs.network.websocket)
+    implementation(libs.logs.timber)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -33,7 +33,7 @@ class PTTWebSocketConnection {
     }
 
     private fun createConnection(): PTTWebSocketListener {
-        return PTTWebSocketListener(URI("ws://192.168.100.4:8000/echo")) {
+        return PTTWebSocketListener(URI("ws://192.168.100.4:8000/channel/111")) {
             println(it)
         }
     }

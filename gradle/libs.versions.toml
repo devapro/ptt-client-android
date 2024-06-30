@@ -11,6 +11,7 @@ espressoCore = "3.6.0"
 lifecycleRuntimeKtx = "2.8.2"
 activityCompose = "1.9.0"
 composeBom = "2024.06.00"
+timber = "5.0.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -26,6 +27,7 @@ di-koin = { group = "io.insert-koin", name = "koin-android", version.ref = "koin
 network-ktor-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
 network-ktor-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
 network-websocket = { group = "org.java-websocket", name = "Java-WebSocket", version.ref = "websocket" }
+logs-timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "timber" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
