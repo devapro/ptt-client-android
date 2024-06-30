@@ -11,13 +11,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.github.devapro.pttdroid.network.PTTWebSocketConnection
 import com.github.devapro.pttdroid.network.PTTWebSocketListener
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
+import org.koin.android.ext.android.inject
 import java.net.URI
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var socketClient: PTTWebSocketListener
+    private val socketConnection: PTTWebSocketConnection by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,7 +31,7 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     Button(onClick = {
-                        socketClient.send("Hello")
+                        socketConnection.send("Hello")
                     }){
                         Text(text = "Send")
                     }
@@ -40,14 +42,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        socketClient = PTTWebSocketListener(URI("ws://192.168.100.4:8000/echo")) {
-            println(it)
-        }
-        socketClient.connect()
+        socketConnection.start()
     }
 
     override fun onStop() {
         super.onStop()
-        socketClient.close()
+        socketConnection.stop()
     }
 }
