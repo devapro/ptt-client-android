@@ -27,6 +27,7 @@ import com.github.devapro.pttdroid.viewmodel.MainActivityViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import org.koin.androidx.viewmodel.ext.android.viewModel
 
@@ -86,8 +87,6 @@ class MainActivity : ComponentActivity() {
             }
         })
 
-        viewModel.onAction(MainAction.InitConnection)
-
         scope = coroutineContextProvider.createScope(
             coroutineContextProvider.io
         )
@@ -97,10 +96,12 @@ class MainActivity : ComponentActivity() {
             }
         }
         scope?.launch {
-            socketConnection.actions.consumeEach { action ->
+            socketConnection.actions.collect { action ->
                 viewModel.onAction(action)
             }
         }
+
+        viewModel.onAction(MainAction.InitConnection)
     }
 
     override fun onStop() {

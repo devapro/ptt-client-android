@@ -4,9 +4,12 @@ import com.github.devapro.pttdroid.model.MainAction
 import com.github.devapro.pttdroid.model.MainEvent
 import com.github.devapro.pttdroid.model.ScreenState
 import com.github.devapro.pttdroid.mvi.Reducer
+import com.github.devapro.pttdroid.network.PTTWebSocketConnection
 import kotlin.reflect.KClass
 
-class DisconnectReducer: Reducer<MainAction.Disconnect, ScreenState, MainAction, MainEvent> {
+class DisconnectReducer(
+    private val socketConnection: PTTWebSocketConnection
+): Reducer<MainAction.Disconnect, ScreenState, MainAction, MainEvent> {
 
     override val actionClass: KClass<MainAction.Disconnect> = MainAction.Disconnect::class
 
@@ -14,6 +17,7 @@ class DisconnectReducer: Reducer<MainAction.Disconnect, ScreenState, MainAction,
         action: MainAction.Disconnect,
         state: ScreenState
     ): Reducer.Result<ScreenState, MainAction, MainEvent?> {
-        return ScreenState.NoConnection to null
+        socketConnection.stop()
+        return state to null
     }
 }

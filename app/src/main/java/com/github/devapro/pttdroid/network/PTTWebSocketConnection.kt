@@ -1,9 +1,11 @@
 package com.github.devapro.pttdroid.network
 
+import com.github.devapro.pttdroid.CoroutineContextProvider
 import com.github.devapro.pttdroid.audio.VoicePlayer
 import com.github.devapro.pttdroid.model.MainAction
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.launch
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ServerHandshake
 import timber.log.Timber
@@ -12,19 +14,25 @@ import java.net.URI
 import java.nio.ByteBuffer
 
 class PTTWebSocketConnection(
-    private val voicePlayer: VoicePlayer
+    private val voicePlayer: VoicePlayer,
+    private val coroutineContextProvider: CoroutineContextProvider
 ) {
 
     private var socketClient: WebSocketClient = createConnection()
+    private val scope = coroutineContextProvider.createScope(
+        coroutineContextProvider.io
+    )
 
-    val actions = Channel<MainAction>(
-        capacity = 1,
+    val actions = MutableSharedFlow<MainAction>(
+        replay = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
     fun start() {
         if (socketClient.isOpen) {
-            actions.trySend(MainAction.Connected)
+            scope.launch {
+                actions.emit(MainAction.Connected)
+            }
             return
         }
         if (socketClient.isClosing || socketClient.isClosed) {
@@ -35,7 +43,9 @@ class PTTWebSocketConnection(
 
     fun reconnect() {
         if (socketClient.isOpen) {
-            actions.trySend(MainAction.Connected)
+            scope.launch {
+                actions.emit(MainAction.Connected)
+            }
             return
         }
         socketClient.close()
@@ -72,7 +82,9 @@ class PTTWebSocketConnection(
         return object : WebSocketClient(URI("ws://192.168.100.4:8000/channel/111")) {
             override fun onOpen(handshakedata: ServerHandshake?) {
                 Timber.i("onOpen")
-                actions.trySend(MainAction.Connected)
+                scope.launch {
+                    actions.emit(MainAction.Connected)
+                }
                 voicePlayer.create()
             }
 
@@ -87,7 +99,9 @@ class PTTWebSocketConnection(
 
             override fun onClose(code: Int, reason: String?, remote: Boolean) {
                 Timber.i("onClose")
-                actions.trySend(MainAction.Reconnect)
+                scope.launch {
+                    actions.emit(MainAction.Reconnect)
+                }
                 voicePlayer.stopPlay()
             }
 
