@@ -17,6 +17,7 @@ import com.github.devapro.pttdroid.permission.UtilPermission
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
 import org.koin.android.ext.android.inject
 import com.github.devapro.pttdroid.audio.VoiceRecorder
+import com.github.devapro.pttdroid.ui.components.ChanelNumber
 import com.github.devapro.pttdroid.ui.components.PTTButton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize().padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        ChanelNumber()
                         PTTButton(
                             onStart = {
                                 voiceRecorder.startRecord()
