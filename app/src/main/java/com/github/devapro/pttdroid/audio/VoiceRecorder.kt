@@ -4,16 +4,27 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import com.github.devapro.pttdroid.CoroutineContextProvider
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.concurrent.Executors
 
-class VoiceRecorder(private val recordListener: (bytes: ByteArray) -> Unit) {
+class VoiceRecorder(
+    private val coroutineContextProvider: CoroutineContextProvider
+) {
 
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
     private val executorService = Executors.newSingleThreadExecutor()
 
     private var audioRecord: AudioRecord? = null
     private var readBufferSize = 8192
+
+    val audioDataChannel = Channel<ByteArray>(
+        capacity = 100,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
 
     @SuppressLint("MissingPermission")
     fun create() {
@@ -61,13 +72,15 @@ class VoiceRecorder(private val recordListener: (bytes: ByteArray) -> Unit) {
 
     private fun startReading() {
         Timber.i("startReading")
-        executorService.execute {
+        coroutineContextProvider.createScope(
+            coroutineContextProvider.io
+        ).launch {
             while (audioRecord?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                 audioRecord?.apply {
                     val bytes = ByteArray(readBufferSize)
                     val readCount = read(bytes, 0, readBufferSize)
                     if (readCount > 0) {
-                        recordListener(bytes)
+                        audioDataChannel.send(bytes)
                     }
                     Timber.i("read $readCount")
                 }

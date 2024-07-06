@@ -32,8 +32,17 @@ class PTTWebSocketConnection {
         socketClient.send(message)
     }
 
+    fun send(message: ByteArray) {
+        if (socketClient.isOpen.not()) {
+            socketClient = createConnection()
+            socketClient.connect()
+            return
+        }
+        socketClient.send(message)
+    }
+
     private fun createConnection(): PTTWebSocketListener {
-        return PTTWebSocketListener(URI("ws://192.168.100.4:8000/channel/111")) {
+        return PTTWebSocketListener(URI("ws://192.168.100.74:8000/channel/111")) {
             println(it)
         }
     }
