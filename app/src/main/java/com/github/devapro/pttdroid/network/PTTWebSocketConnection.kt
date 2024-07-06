@@ -1,6 +1,9 @@
 package com.github.devapro.pttdroid.network
 
 import com.github.devapro.pttdroid.audio.VoicePlayer
+import com.github.devapro.pttdroid.model.MainAction
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ServerHandshake
 import timber.log.Timber
@@ -14,13 +17,29 @@ class PTTWebSocketConnection(
 
     private var socketClient: WebSocketClient = createConnection()
 
+    val actions = Channel<MainAction>(
+        capacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
     fun start() {
         if (socketClient.isOpen) {
+            actions.trySend(MainAction.Connected)
             return
         }
         if (socketClient.isClosing || socketClient.isClosed) {
             socketClient = createConnection()
         }
+        socketClient.connect()
+    }
+
+    fun reconnect() {
+        if (socketClient.isOpen) {
+            actions.trySend(MainAction.Connected)
+            return
+        }
+        socketClient.close()
+        socketClient = createConnection()
         socketClient.connect()
     }
 
@@ -50,9 +69,10 @@ class PTTWebSocketConnection(
     }
 
     private fun createConnection(): WebSocketClient {
-        return object : WebSocketClient(URI("ws://192.168.100.74:8000/channel/111")) {
+        return object : WebSocketClient(URI("ws://192.168.100.4:8000/channel/111")) {
             override fun onOpen(handshakedata: ServerHandshake?) {
                 Timber.i("onOpen")
+                actions.trySend(MainAction.Connected)
                 voicePlayer.create()
             }
 
@@ -67,14 +87,15 @@ class PTTWebSocketConnection(
 
             override fun onClose(code: Int, reason: String?, remote: Boolean) {
                 Timber.i("onClose")
+                actions.trySend(MainAction.Reconnect)
                 voicePlayer.stopPlay()
             }
 
             override fun onError(ex: Exception?) {
                 Timber.i("onError")
-                voicePlayer.stopPlay()
+//                actions.trySend(MainAction.Reconnect)
+//                voicePlayer.stopPlay()
             }
-
         }
     }
 }

@@ -5,7 +5,7 @@ sealed interface ScreenState {
     data object NoConnection : ScreenState
 
     data class Connected(
-        val isPressed: Boolean,
+        val isSpeaking: Boolean,
         val chanelNumber: Int
     ): ScreenState
 }

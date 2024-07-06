@@ -4,22 +4,16 @@ import com.github.devapro.pttdroid.model.MainAction
 import com.github.devapro.pttdroid.model.MainEvent
 import com.github.devapro.pttdroid.model.ScreenState
 import com.github.devapro.pttdroid.mvi.Reducer
-import com.github.devapro.pttdroid.network.PTTWebSocketConnection
-import kotlinx.coroutines.delay
 import kotlin.reflect.KClass
 
-class ReconnectReducer(
-    private val socketConnection: PTTWebSocketConnection
-): Reducer<MainAction.Reconnect, ScreenState, MainAction, MainEvent>{
+class DisconnectReducer: Reducer<MainAction.Disconnect, ScreenState, MainAction, MainEvent> {
 
-    override val actionClass: KClass<MainAction.Reconnect> = MainAction.Reconnect::class
+    override val actionClass: KClass<MainAction.Disconnect> = MainAction.Disconnect::class
 
     override suspend fun reduce(
-        action: MainAction.Reconnect,
+        action: MainAction.Disconnect,
         state: ScreenState
     ): Reducer.Result<ScreenState, MainAction, MainEvent?> {
-        delay(1000L)
-        socketConnection.reconnect()
         return ScreenState.NoConnection to null
     }
 }

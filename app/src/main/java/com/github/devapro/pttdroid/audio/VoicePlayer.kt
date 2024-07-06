@@ -5,6 +5,7 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.AudioTrack.PLAYSTATE_STOPPED
+import android.media.AudioTrack.STATE_INITIALIZED
 import timber.log.Timber
 
 class VoicePlayer {
@@ -54,10 +55,14 @@ class VoicePlayer {
     }
 
     fun stopPlay() {
-        audioTrack?.apply {
-            stop()
-            release()
-        }
+        audioTrack
+            ?.takeIf { it.state == STATE_INITIALIZED }
+            ?.apply {
+                if (playState != PLAYSTATE_STOPPED) {
+                    stop()
+                }
+                release()
+            }
     }
 
 
