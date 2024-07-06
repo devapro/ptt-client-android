@@ -38,7 +38,6 @@ class MainActivity : ComponentActivity() {
 
     private val socketConnection: PTTWebSocketConnection by inject()
     private val utilPermission: UtilPermission by inject()
-    private val voicePlayer: VoicePlayer by inject()
     private val voiceRecorder: VoiceRecorder by inject()
     private val coroutineContextProvider: CoroutineContextProvider by inject()
 
@@ -91,7 +90,6 @@ class MainActivity : ComponentActivity() {
             }
         })
 
-        voicePlayer.create()
         socketConnection.start()
 
         scope = coroutineContextProvider.createScope(
@@ -107,7 +105,6 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         socketConnection.stop()
-        voicePlayer.stopPlay()
         voiceRecorder.stopRecord()
         scope?.cancel()
     }

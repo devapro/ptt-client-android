@@ -53,10 +53,6 @@ class VoicePlayer {
         }
     }
 
-    fun startPlay() {
-
-    }
-
     fun stopPlay() {
         audioTrack?.apply {
             stop()
