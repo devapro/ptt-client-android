@@ -18,7 +18,8 @@ class PTTWebSocketConnection(
     private val coroutineContextProvider: CoroutineContextProvider
 ) {
 
-    private var socketClient: WebSocketClient = createConnection()
+    private var socketClient: WebSocketClient? = null
+    private var activeChannelNumber = -1
     private val scope = coroutineContextProvider.createScope(
         coroutineContextProvider.io
     )
@@ -28,58 +29,55 @@ class PTTWebSocketConnection(
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
-    fun start() {
-        if (socketClient.isOpen) {
+    fun start(channelNumber: Int) {
+        if (socketClient?.isOpen == true) {
             scope.launch {
                 actions.emit(MainAction.Connected)
             }
             return
         }
-        if (socketClient.isClosing || socketClient.isClosed) {
-            socketClient = createConnection()
+        if (
+            socketClient == null
+            || socketClient?.isClosing == true
+            || socketClient?.isClosed == true
+            ) {
+            activeChannelNumber = channelNumber
+            socketClient = createConnection(channelNumber)
         }
-        socketClient.connect()
+        socketClient?.connect()
     }
 
-    fun reconnect() {
-        if (socketClient.isOpen) {
+    fun reconnect(channelNumber: Int) {
+        if (socketClient?.isOpen == true && activeChannelNumber == channelNumber) {
             scope.launch {
                 actions.emit(MainAction.Connected)
             }
             return
         }
-        socketClient.close()
-        socketClient = createConnection()
-        socketClient.connect()
+        activeChannelNumber = channelNumber
+        socketClient?.close()
+        socketClient = createConnection(channelNumber)
+        socketClient?.connect()
     }
 
     fun stop() {
-        if (socketClient.isClosing || socketClient.isClosed) {
+        if (socketClient?.isClosing == true || socketClient?.isClosed == true) {
             return
         }
-        socketClient.close()
-    }
-
-    fun send(message: String) {
-        if (socketClient.isOpen.not()) {
-            socketClient = createConnection()
-            socketClient.connect()
-            return
-        }
-        socketClient.send(message)
+        socketClient?.close()
     }
 
     fun send(message: ByteArray) {
-        if (socketClient.isOpen.not()) {
-            socketClient = createConnection()
-            socketClient.connect()
+        if (socketClient?.isOpen?.not() == true) {
+            socketClient = createConnection(activeChannelNumber)
+            socketClient?.connect()
             return
         }
-        socketClient.send(message)
+        socketClient?.send(message)
     }
 
-    private fun createConnection(): WebSocketClient {
-        return object : WebSocketClient(URI("ws://192.168.100.4:8000/channel/111")) {
+    private fun createConnection(channelNumber: Int): WebSocketClient {
+        return object : WebSocketClient(URI("ws://192.168.100.4:8000/channel/$channelNumber")) {
             override fun onOpen(handshakedata: ServerHandshake?) {
                 Timber.i("onOpen")
                 scope.launch {

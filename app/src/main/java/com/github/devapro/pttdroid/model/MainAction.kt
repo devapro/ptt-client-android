@@ -8,4 +8,5 @@ interface MainAction {
     data object Reconnect : MainAction
     data object Speak : MainAction
     data object StopSpeak : MainAction
+    data class SetChannel(val channel: Int) : MainAction
 }

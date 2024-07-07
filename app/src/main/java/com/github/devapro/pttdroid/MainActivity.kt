@@ -27,7 +27,6 @@ import com.github.devapro.pttdroid.viewmodel.MainActivityViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.consumeEach
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import org.koin.androidx.viewmodel.ext.android.viewModel
 
@@ -57,9 +56,14 @@ class MainActivity : ComponentActivity() {
                             .padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        ChanelNumber()
                         ConnectIcon(isConnected = screenState.value is ScreenState.Connected)
                         (screenState.value as? ScreenState.Connected)?.let {
+                            ChanelNumber(
+                                currentChanel = it.chanelNumber,
+                                onAction = { action ->
+                                    viewModel.onAction(action)
+                                }
+                            )
                             PTTButton(
                                 isPressed = it.isSpeaking,
                                 onStart = {

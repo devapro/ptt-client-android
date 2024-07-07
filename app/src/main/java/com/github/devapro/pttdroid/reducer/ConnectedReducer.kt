@@ -1,12 +1,15 @@
 package com.github.devapro.pttdroid.reducer
 
+import com.github.devapro.pttdroid.data.ChannelSettingsRepository
 import com.github.devapro.pttdroid.model.MainAction
 import com.github.devapro.pttdroid.model.MainEvent
 import com.github.devapro.pttdroid.model.ScreenState
 import com.github.devapro.pttdroid.mvi.Reducer
 import kotlin.reflect.KClass
 
-class ConnectedReducer: Reducer<MainAction.Connected, ScreenState, MainAction, MainEvent>{
+class ConnectedReducer(
+    private val channelSettingsRepository: ChannelSettingsRepository
+): Reducer<MainAction.Connected, ScreenState, MainAction, MainEvent>{
 
     override val actionClass: KClass<MainAction.Connected> = MainAction.Connected::class
 
@@ -16,7 +19,7 @@ class ConnectedReducer: Reducer<MainAction.Connected, ScreenState, MainAction, M
     ): Reducer.Result<ScreenState, MainAction, MainEvent?> {
         return ScreenState.Connected(
             isSpeaking = false,
-            chanelNumber = 1
+            chanelNumber = channelSettingsRepository.getChannel()
         ) to null
     }
 }
