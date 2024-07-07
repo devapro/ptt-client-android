@@ -14,6 +14,7 @@ TODO:
 - Add variant of disabled interface when offline
 - Add internal sever for work without additional web server
 - Add animation for button
+- Add animation of incoming call
 - Disable PTT button when some body in the channel already pressed PTT button
 - Deploy test web server
 - Add more detailed docimentation
