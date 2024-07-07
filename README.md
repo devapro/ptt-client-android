@@ -19,3 +19,5 @@ TODO:
 - Add more detailed docimentation
 - Replace socket client with ktor
 - Add Foreground service
+- Add CI build for releases
+- Add Unit/UI tests
