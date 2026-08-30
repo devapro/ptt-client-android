@@ -7,5 +7,5 @@ import com.github.devapro.pttdroid.mvi.ActionProcessor
 import com.github.devapro.pttdroid.mvi.Reducer
 
 class MainActionProcessor(
-    reducers: Set<Reducer<MainAction, ScreenState, MainAction, MainEvent>>
+    reducers: Set<Reducer<out MainAction, ScreenState, MainAction, MainEvent>>
 ) : ActionProcessor<ScreenState, MainAction, MainEvent>(reducers)

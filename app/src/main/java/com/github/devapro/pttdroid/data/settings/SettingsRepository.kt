@@ -1,0 +1,99 @@
+package com.github.devapro.pttdroid.data.settings
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "ptt_settings",
+)
+
+/**
+ * Settings backed by DataStore, replacing the old `PrefManager` wrapper over the deprecated
+ * `android.preference.PreferenceManager`.
+ */
+class SettingsRepository(private val context: Context) {
+
+    val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
+        AppSettings(
+            serverHost = prefs[KEY_HOST] ?: AppSettings.DEFAULT_HOST,
+            serverPort = prefs[KEY_PORT] ?: AppSettings.DEFAULT_PORT,
+            channel = AppSettings.clampChannel(prefs[KEY_CHANNEL] ?: AppSettings.DEFAULT_CHANNEL),
+            displayName = prefs[KEY_NAME] ?: AppSettings.DEFAULT_NAME,
+            floatingButtonEnabled = prefs[KEY_FLOATING] ?: false,
+            themeMode = ThemeMode.fromStorage(prefs[KEY_THEME]),
+            hostServerEnabled = prefs[KEY_HOST_SERVER] ?: false,
+            floatingButtonX = prefs[KEY_FLOATING_X] ?: 0,
+            floatingButtonY = prefs[KEY_FLOATING_Y] ?: 300,
+        )
+    }
+
+    /**
+     * Writes every user-editable field in one transaction.
+     *
+     * Field-at-a-time writes meant the settings screen committed six times, emitting six
+     * `AppSettings` values; a reconnect racing that could read a new host with the old port.
+     * The floating-button position is deliberately not written here — the overlay owns it and
+     * updates it as the user drags.
+     */
+    suspend fun save(settings: AppSettings) = edit { prefs ->
+        prefs[KEY_HOST] = settings.serverHost.trim()
+        prefs[KEY_PORT] = settings.serverPort.coerceIn(AppSettings.PORT_RANGE)
+        prefs[KEY_CHANNEL] = AppSettings.clampChannel(settings.channel)
+        prefs[KEY_NAME] = settings.displayName.trim().take(AppSettings.MAX_NAME_LENGTH)
+            .ifEmpty { AppSettings.DEFAULT_NAME }
+        prefs[KEY_FLOATING] = settings.floatingButtonEnabled
+        prefs[KEY_HOST_SERVER] = settings.hostServerEnabled
+        prefs[KEY_THEME] = settings.themeMode.name
+    }
+
+    suspend fun setServer(host: String, port: Int) = edit { prefs ->
+        prefs[KEY_HOST] = host.trim()
+        prefs[KEY_PORT] = port.coerceIn(AppSettings.PORT_RANGE)
+    }
+
+    suspend fun setChannel(channel: Int) = edit { prefs ->
+        prefs[KEY_CHANNEL] = AppSettings.clampChannel(channel)
+    }
+
+    suspend fun setDisplayName(name: String) = edit { prefs ->
+        prefs[KEY_NAME] = name.trim().take(AppSettings.MAX_NAME_LENGTH)
+            .ifEmpty { AppSettings.DEFAULT_NAME }
+    }
+
+    suspend fun setFloatingButtonEnabled(enabled: Boolean) = edit { prefs ->
+        prefs[KEY_FLOATING] = enabled
+    }
+
+    suspend fun setHostServerEnabled(enabled: Boolean) = edit { prefs ->
+        prefs[KEY_HOST_SERVER] = enabled
+    }
+
+    suspend fun setFloatingButtonPosition(x: Int, y: Int) = edit { prefs ->
+        prefs[KEY_FLOATING_X] = x
+        prefs[KEY_FLOATING_Y] = y
+    }
+
+    private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
+        context.settingsDataStore.edit(block)
+    }
+
+    private companion object {
+        val KEY_HOST = stringPreferencesKey("server_host")
+        val KEY_PORT = intPreferencesKey("server_port")
+        val KEY_CHANNEL = intPreferencesKey("channel")
+        val KEY_NAME = stringPreferencesKey("display_name")
+        val KEY_FLOATING = booleanPreferencesKey("floating_button_enabled")
+        val KEY_THEME = stringPreferencesKey("theme_mode")
+        val KEY_HOST_SERVER = booleanPreferencesKey("host_server_enabled")
+        val KEY_FLOATING_X = intPreferencesKey("floating_button_x")
+        val KEY_FLOATING_Y = intPreferencesKey("floating_button_y")
+    }
+}

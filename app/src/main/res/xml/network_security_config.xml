@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The PTT protocol is plain `ws://` against a self-hosted relay on the local network, so
+    cleartext must be permitted. The server address is user-configurable, so the allowed hosts
+    cannot be enumerated here and cleartext is enabled for the base config.
+
+    Note: the previous Java-WebSocket client did not go through Android's network security
+    policy at all, which is why this was never needed before switching to Ktor/OkHttp.
+
+    If you deploy the relay behind TLS, switch the client to `wss://` and set
+    cleartextTrafficPermitted="false".
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

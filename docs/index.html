@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PTTdroid</title>
+<meta name="description" content="A push-to-talk radio for Android, running over a WebSocket relay you host yourself. One talker per channel, enforced by the server.">
+<meta property="og:title" content="PTTdroid — self-hosted push-to-talk">
+<meta property="og:description" content="Hold the button, talk, everyone on your channel hears you. Over a relay you run yourself.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="img/screen-ready.png">
+<link rel="icon" href="img/bubble.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Expanded:wght@700;800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* ------------------------------------------------------------------ tokens */
+/* Dark is the designed scheme, mirroring the app itself; light is its mirror.
+   Every colour is defined here on bare :root so the un-stamped "system" state
+   always resolves. */
+:root{
+  --ground:#0A0E13; --panel:#121A23; --panel-2:#18222D; --edge:#26333F;
+  --text:#E8EFF5; --muted:#8FA1B2; --faint:#5C6C7C;
+  --green:#22C55E; --amber:#F59E0B; --red:#EF4444; --sky:#38BDF8; --slate:#64748B;
+  --accent:var(--green); --on-accent:#08111A;
+  --code-bg:#070B0F;
+  --shadow:0 30px 70px rgba(0,0,0,.6);
+  --rail:120px;
+}
+:root[data-theme="light"]{
+  --ground:#F2F5F8; --panel:#FFFFFF; --panel-2:#E9EFF4; --edge:#C9D5DF;
+  --text:#0E151C; --muted:#516272; --faint:#7C8B99;
+  --green:#15803D; --amber:#B45309; --red:#B91C1C; --sky:#0369A1; --slate:#546272;
+  --accent:var(--green); --on-accent:#FFFFFF;
+  --code-bg:#0A1017;
+  --shadow:0 24px 50px rgba(15,30,45,.14);
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --ground:#F2F5F8; --panel:#FFFFFF; --panel-2:#E9EFF4; --edge:#C9D5DF;
+    --text:#0E151C; --muted:#516272; --faint:#7C8B99;
+    --green:#15803D; --amber:#B45309; --red:#B91C1C; --sky:#0369A1; --slate:#546272;
+    --accent:var(--green); --on-accent:#FFFFFF;
+    --code-bg:#0A1017;
+    --shadow:0 24px 50px rgba(15,30,45,.14);
+  }
+}
+
+/* ------------------------------------------------------------------- base */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--ground); color:var(--text);
+  font-family:"IBM Plex Sans","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:16.5px; line-height:1.65; -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent); text-decoration:none}
+a:hover{text-decoration:underline; text-underline-offset:3px}
+a:focus-visible,.btn:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:2px}
+img{max-width:100%; height:auto; display:block}
+p{margin:0 0 1.05em; max-width:64ch}
+p:last-child{margin-bottom:0}
+
+h1,h2{
+  font-family:"Archivo Expanded",Archivo,"Helvetica Neue",Arial,sans-serif;
+  font-weight:800; letter-spacing:-.015em; line-height:1.02;
+  text-wrap:balance; margin:0 0 .45em;
+}
+h1{font-size:clamp(2.6rem,7.2vw,4.6rem); text-transform:uppercase}
+h2{font-size:clamp(1.6rem,3.6vw,2.4rem); text-transform:uppercase}
+h3{
+  font-family:"IBM Plex Sans",sans-serif; font-weight:600; font-size:1.02rem;
+  margin:0 0 .5em; letter-spacing:-.005em;
+}
+
+/* Panel silkscreen: the small mono caps that label a section, the way the front
+   of a radio labels its controls. */
+.label{
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  font-weight:600; font-size:.7rem; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--faint);
+}
+
+.wrap{max-width:1140px; margin:0 auto; padding:0 28px}
+
+/* front-panel grid: silkscreen label in the gutter, content to its right */
+.panel{
+  display:grid; grid-template-columns:var(--rail) minmax(0,1fr); gap:0 40px;
+  padding:76px 0; border-top:1px solid var(--edge);
+}
+.panel > .label{padding-top:.55rem}
+
+/* ------------------------------------------------------------------- hero */
+.hero{
+  display:grid; grid-template-columns:1.1fr .9fr; gap:64px; align-items:center;
+  padding:88px 0 76px;
+}
+.kicker{
+  display:inline-flex; align-items:center; gap:.6rem; margin-bottom:1.6rem;
+  font-family:"IBM Plex Mono",monospace; font-size:.72rem; font-weight:600;
+  letter-spacing:.18em; text-transform:uppercase; color:var(--muted);
+}
+.kicker .led{
+  width:.5rem; height:.5rem; border-radius:50%; background:var(--green);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--green) 22%, transparent);
+}
+.lede{font-size:clamp(1.05rem,2vw,1.24rem); color:var(--muted); max-width:50ch}
+.cta{display:flex; gap:12px; flex-wrap:wrap; margin-top:2rem}
+.btn{
+  display:inline-block; padding:.85rem 1.5rem; border-radius:3px; font-weight:600;
+  font-size:.95rem; border:1px solid transparent; letter-spacing:.01em;
+  transition:transform .12s ease, background .12s ease;
+}
+.btn:hover{text-decoration:none; transform:translateY(-1px)}
+.btn-primary{background:var(--accent); color:var(--on-accent)}
+.btn-ghost{border-color:var(--edge); color:var(--text); background:var(--panel)}
+
+/* The carrier pulse: the app's own ON AIR ripple, standing in as page atmosphere. */
+.stage{position:relative; display:grid; place-items:center; isolation:isolate}
+.stage::before,.stage::after{
+  content:""; position:absolute; z-index:-1; width:min(74%,340px); aspect-ratio:1;
+  border-radius:50%; border:1px solid var(--green); opacity:0;
+  animation:carrier 5.2s cubic-bezier(.2,.6,.3,1) infinite;
+}
+.stage::after{animation-delay:2.6s}
+@keyframes carrier{
+  0%{transform:scale(.72); opacity:.42}
+  100%{transform:scale(1.5); opacity:0}
+}
+@media (prefers-reduced-motion: reduce){
+  .stage::before,.stage::after{animation:none; opacity:.18; transform:scale(1.1)}
+  html{scroll-behavior:auto}
+}
+.device{
+  width:100%; max-width:296px; border-radius:26px; border:1px solid var(--edge);
+  box-shadow:var(--shadow);
+}
+.device-wide{max-width:620px; border-radius:14px}
+
+/* ------------------------------------------------------------------ pieces */
+.rows{display:grid; gap:0}
+.row{
+  display:grid; grid-template-columns:auto minmax(0,1fr); gap:0 22px;
+  padding:22px 0; border-bottom:1px solid var(--edge);
+}
+.row:first-child{padding-top:0}
+.row:last-child{border-bottom:0; padding-bottom:0}
+.row .n{
+  font-family:"IBM Plex Mono",monospace; font-size:.78rem; font-weight:600;
+  color:var(--accent); padding-top:.3rem; letter-spacing:.06em;
+}
+.row p{color:var(--muted); font-size:.96rem; margin:0}
+
+.cols{display:grid; gap:44px; grid-template-columns:1fr 1fr; align-items:center}
+.cols-3{display:grid; gap:34px; grid-template-columns:repeat(3,1fr)}
+
+/* status readout — the product's own vocabulary, as a table */
+.readout{width:100%; border-collapse:collapse; font-size:.95rem}
+.readout th,.readout td{text-align:left; padding:.8rem .6rem; border-bottom:1px solid var(--edge)}
+.readout thead th{
+  font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:.68rem;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--faint);
+}
+.readout tbody tr:last-child td{border-bottom:0}
+.readout td:nth-child(2){
+  font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:.85rem;
+  white-space:nowrap; font-variant-numeric:tabular-nums;
+}
+.readout td:last-child{color:var(--muted)}
+.state{display:inline-flex; align-items:center; gap:.6rem; font-weight:600; white-space:nowrap}
+.led-sm{width:.7rem; height:.7rem; border-radius:50%; flex:0 0 auto}
+
+pre{
+  background:var(--code-bg); border:1px solid var(--edge); border-radius:4px;
+  padding:18px 20px; overflow-x:auto; margin:0 0 1em; color:#CBD5E1;
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  font-size:.82rem; line-height:1.75;
+}
+pre .c{color:#5C6C7C}
+code{
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  font-size:.88em; color:var(--text);
+}
+.note{
+  border:1px solid var(--edge); border-radius:4px; padding:18px 22px;
+  background:var(--panel); color:var(--muted); font-size:.94rem;
+}
+.note.warn{border-color:color-mix(in srgb, var(--red) 45%, var(--edge))}
+.note strong{color:var(--text)}
+ul.tight{margin:0; padding-left:1.15rem; color:var(--muted); font-size:.96rem}
+ul.tight li{margin-bottom:.5em}
+ul.tight li:last-child{margin-bottom:0}
+ul.tight strong{color:var(--text); font-weight:600}
+.muted{color:var(--muted)}
+.small{font-size:.9rem}
+figcaption{
+  font-family:"IBM Plex Mono",monospace; font-size:.7rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--faint); margin-top:14px; text-align:center;
+}
+footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
+.footlinks{
+  display:flex; gap:26px; flex-wrap:wrap; margin-top:26px;
+  font-family:"IBM Plex Mono",monospace; font-size:.8rem; letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+@media (max-width:900px){
+  .hero{grid-template-columns:1fr; gap:44px; padding:56px 0 48px}
+  .panel{grid-template-columns:1fr; gap:18px; padding:56px 0}
+  .panel > .label{padding-top:0}
+  .cols,.cols-3{grid-template-columns:1fr; gap:32px}
+}
+</style>
+</head>
+<body>
+
+<header class="wrap hero">
+  <div>
+    <span class="kicker"><span class="led"></span>Kotlin · Compose · self-hosted</span>
+    <h1>Hold the<br>button</h1>
+    <p class="lede">
+      A push-to-talk radio for Android, running over a WebSocket relay you host yourself.
+      One talker per channel, enforced by the server — so two people pressing at once
+      cannot both be heard.
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/devapro/ptt-client-android">Get the app</a>
+      <a class="btn btn-ghost" href="https://github.com/devapro/ptt-server">Run the relay</a>
+    </div>
+  </div>
+  <div class="stage">
+    <img class="device" src="img/screen-ready.png" width="360" height="800"
+         alt="The PTTdroid main screen: a status card reading Channel clear with two radios online, a channel selector showing 01, and a large green button labelled HOLD.">
+  </div>
+</header>
+
+<main>
+<section class="wrap panel">
+  <p class="label">Setup</p>
+  <div>
+    <h2>Three parts,<br>no accounts</h2>
+    <div class="rows" style="margin-top:34px">
+      <div class="row">
+        <span class="n">01</span>
+        <div>
+          <h3>Run a relay</h3>
+          <p>One container, or one JAR. It keeps each channel's members apart and hands out the
+          talk floor. No database, nothing to back up.</p>
+        </div>
+      </div>
+      <div class="row">
+        <span class="n">02</span>
+        <div>
+          <h3>Point the phones at it</h3>
+          <p>Host and port are settings, not constants. The app shows the exact
+          <code>ws://</code> URL it will dial, so a typo is visible before you start wondering
+          why nothing works.</p>
+        </div>
+      </div>
+      <div class="row">
+        <span class="n">03</span>
+        <div>
+          <h3>Pick a channel and press</h3>
+          <p>Channels 1–99. Pressing asks the server for the floor; the microphone opens only
+          once the server answers that it is yours.</p>
+        </div>
+      </div>
+    </div>
+    <p class="muted small" style="margin-top:28px">
+      Nothing leaves your network. Putting it on the internet means a reverse proxy you own, not
+      a service somebody else runs.
+    </p>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Interface</p>
+  <div>
+    <h2>Built for not<br>looking at it</h2>
+    <div class="cols" style="margin-top:34px">
+      <div>
+        <p>A walkie-talkie is used one-handed, in motion, while you are looking at something
+        else — the road, the load, the other person. Three questions have to be answerable in one
+        glance: <strong>can I talk</strong>, <strong>is anyone hearing me</strong>,
+        <strong>which channel</strong>. Everything you touch sits in the bottom half of the
+        screen, where a thumb actually lands.</p>
+
+        <p>Colour follows radio convention rather than traffic lights. Red is <em>on air</em>,
+        not "stop". An incoming transmission is blue rather than green, because green here means
+        the channel is yours — which is the opposite of somebody else holding the floor.</p>
+
+        <p>And nothing depends on colour alone: every state also changes the word on the button
+        and the glyph above it.</p>
+      </div>
+      <figure style="margin:0">
+        <img class="device" src="img/screen-onair.png" width="360" height="800"
+             alt="The main screen while transmitting: the status card reads You are on air, and the large button is red, labelled ON AIR.">
+        <figcaption>Transmitting</figcaption>
+      </figure>
+    </div>
+
+    <table class="readout" style="margin-top:48px">
+      <thead>
+        <tr><th scope="col">State</th><th scope="col">Button</th><th scope="col">Meaning</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="state"><span class="led-sm" style="background:var(--green)"></span>Ready</span></td>
+          <td>HOLD</td><td>Connected, floor free — the only state where a press transmits</td>
+        </tr>
+        <tr>
+          <td><span class="state"><span class="led-sm" style="background:var(--amber)"></span>Requesting</span></td>
+          <td>WAIT</td><td>Asked for the floor, no answer yet. Speaking now clips your first word</td>
+        </tr>
+        <tr>
+          <td><span class="state"><span class="led-sm" style="background:var(--red)"></span>Transmitting</span></td>
+          <td>ON AIR</td><td>The server granted the floor; the microphone is open</td>
+        </tr>
+        <tr>
+          <td><span class="state"><span class="led-sm" style="background:var(--sky)"></span>Receiving</span></td>
+          <td>BUSY</td><td>Someone else is talking, and they are named on screen</td>
+        </tr>
+        <tr>
+          <td><span class="state"><span class="led-sm" style="background:var(--slate)"></span>Offline</span></td>
+          <td>OFFLINE</td><td>No transport — and the card shows the address it cannot reach</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Hands-free</p>
+  <div>
+    <h2>Talk without<br>opening the app</h2>
+    <div class="cols" style="margin-top:34px">
+      <div>
+        <p>A microphone foreground service keeps the channel connected, so the app does not have
+        to be in front — or even open — to hear or be heard.</p>
+        <ul class="tight">
+          <li><strong>Floating button</strong> — hold to talk over any other app, drag to move.
+          It carries the channel number and a microphone, struck through whenever a press would
+          do nothing.</li>
+          <li><strong>Home-screen widget</strong> — tap to toggle transmit, −/+ for the channel.</li>
+          <li><strong>Notification</strong> — Talk, Stop and Disconnect, with the live status.</li>
+        </ul>
+        <p class="muted small" style="margin-top:1.3em">
+          The widget is a toggle rather than a hold, because a widget only ever receives discrete
+          clicks — there is no touch-down and touch-up to hold on to.
+        </p>
+      </div>
+      <figure style="margin:0; display:grid; place-items:center">
+        <img src="img/bubble.png" width="300" height="330"
+             style="max-width:240px; border:1px solid var(--edge); border-radius:10px"
+             alt="The floating PTT bubble over a home screen: a green disc showing the channel number 01, a microphone icon, and the word HOLD.">
+        <figcaption>Over another app</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Install</p>
+  <div>
+    <h2>Two commands</h2>
+    <div class="cols" style="margin-top:34px; align-items:start">
+      <div>
+        <h3>Start the relay</h3>
+<pre><span class="c"># in ptt-server/</span>
+docker compose up -d
+curl -s localhost:8000/health</pre>
+        <p class="muted small">Or <code>./gradlew run</code> with JDK&nbsp;21, if you would rather
+        not use Docker.</p>
+      </div>
+      <div>
+        <h3>Build and install the app</h3>
+<pre><span class="c"># in ptt-client-android/</span>
+./gradlew assembleDebug
+adb install -r -g \
+  app/build/outputs/apk/debug/app-debug.apk</pre>
+        <p class="muted small">Then set the relay host in Settings. On an emulator that is
+        <code>10.0.2.2</code> — inside an emulator, <code>localhost</code> is the emulator itself.</p>
+      </div>
+    </div>
+    <div class="note" style="margin-top:30px">
+      <strong>No server at all?</strong> Turn on <em>Host a relay on this device</em> in Settings.
+      That phone runs the relay itself: point it at <code>127.0.0.1</code>, and point the other
+      phones at its address on the Wi-Fi.
+    </div>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Settings</p>
+  <div>
+    <h2>Nothing is<br>compiled in</h2>
+    <div class="cols" style="margin-top:34px">
+      <div>
+        <p>Host, port, display name, channel and theme are all settings. An earlier build had a
+        LAN address baked into the socket class, which made it useless on any other network — so
+        the relay address being editable, and visible, is rather the point.</p>
+        <ul class="tight">
+          <li><strong>Relay</strong> — host and port, validated, with a live preview of the URL.</li>
+          <li><strong>Identity</strong> — the name others see while you hold the floor.</li>
+          <li><strong>Appearance</strong> — follow the system, or force light or dark.</li>
+          <li><strong>Hands-free</strong> — the floating button, and the on-device relay.</li>
+        </ul>
+      </div>
+      <figure style="margin:0">
+        <img class="device" src="img/screen-settings.png" width="360" height="800"
+             alt="The settings screen: cards for Relay with host and port, Identity, Appearance with a System, Light and Dark selector, and Hands-free toggles.">
+        <figcaption>Settings</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Any screen</p>
+  <div>
+    <h2>Phones and tablets,<br>light and dark</h2>
+    <p class="lede" style="margin-bottom:32px">In landscape the readout moves beside the button
+    instead of above it, so the control never gets squeezed into whatever is left over.</p>
+    <figure style="margin:0">
+      <img class="device device-wide" src="img/screen-tablet.png" width="640" height="400"
+           alt="The app on a tablet in landscape and light theme: the status card and channel selector on the left, a large blue button labelled BUSY on the right, under the line Anon is talking.">
+      <figcaption>Tablet · landscape · light</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Source</p>
+  <div>
+    <h2>Two repositories,<br>one wire contract</h2>
+    <div class="cols" style="margin-top:34px; align-items:start">
+      <div>
+        <h3><a href="https://github.com/devapro/ptt-client-android">ptt-client-android</a></h3>
+        <p class="muted small">Kotlin, MVI, Jetpack Compose, a Glance widget, Koin, Ktor client.
+        One controller owns the connection, the microphone and the speaker, hosted by a foreground
+        service — the screen, the floating bubble and the widget are all observers of a single
+        state flow.</p>
+        <p class="small" style="margin-top:.9em">65 unit tests · 24 Compose UI tests</p>
+      </div>
+      <div>
+        <h3><a href="https://github.com/devapro/ptt-server">ptt-server</a></h3>
+        <p class="muted small">Kotlin and Ktor. Per-channel isolation and server-enforced floor
+        control. Every session has its own bounded outbound queue drained by its own writer
+        coroutine, so one slow peer cannot stall the channel.</p>
+        <p class="small" style="margin-top:.9em">14 tests, driven through real WebSocket clients</p>
+      </div>
+    </div>
+    <p class="muted small" style="margin-top:30px">
+      The wire protocol is specified once, in the server repo, and the client follows it:
+      <a href="https://github.com/devapro/ptt-server/blob/main/docs/protocol.md">protocol.md</a>.
+      The reasoning behind the interface is written down in
+      <a href="https://github.com/devapro/ptt-client-android/blob/main/docs/ui-design.md">ui-design.md</a>.
+    </p>
+  </div>
+</section>
+</main>
+
+<footer class="wrap">
+  <div class="note warn">
+    <strong>No authentication, and no TLS.</strong> The transport is plain <code>ws://</code>.
+    This is built for a LAN. Do not expose the relay to the open internet without putting TLS
+    termination and some form of authentication in front of it.
+  </div>
+  <p class="muted small" style="margin-top:24px">
+    Also not included: audio compression — it is raw 16&nbsp;kHz mono PCM, roughly 32&nbsp;kB/s
+    while transmitting — message history, text chat, and per-user mute.
+  </p>
+  <nav class="footlinks">
+    <a href="https://github.com/devapro/ptt-client-android">Client</a>
+    <a href="https://github.com/devapro/ptt-server">Server</a>
+    <a href="https://github.com/devapro/ptt-server/blob/main/docs/protocol.md">Protocol</a>
+  </nav>
+</footer>
+
+</body>
+</html>

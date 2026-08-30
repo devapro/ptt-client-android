@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+   Full backup content rules for Android 11 (API 30) and below.
+   See https://developer.android.com/guide/topics/data/autobackup#XMLSyntax
+   for details.
+   This app only persists a channel number and a few small settings values
+   in SharedPreferences, so there is nothing sensitive to exclude.
+-->
+<full-backup-content>
+    <include domain="sharedpref" path="." />
+</full-backup-content>
