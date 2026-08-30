@@ -47,6 +47,29 @@ a snackbar.
   apps" screen when the permission is missing, and **Host a relay on this device**, which runs the
   server in-app so no separate machine is needed.
 
+## Security
+
+Three settings under **Settings → Security**, all optional, all matching something the relay was
+started with:
+
+- **Encrypted connection** — `wss://` instead of `ws://`. The URL preview above updates as you
+  toggle it, so the setting is never ambiguous.
+- **Certificate fingerprint** — for a relay serving its own self-signed certificate, which is what
+  `ptt-server` generates on first boot. Paste the SHA-256 it prints; colons and case do not
+  matter. Leave it empty when the relay has a publicly trusted certificate, such as through a
+  tunnel.
+- **Access token** — the relay's shared secret, sent as a header. Masked, with a Show toggle.
+
+A half-typed fingerprint blocks Save rather than being accepted and quietly matching nothing. A
+fingerprint left over from a previous relay is not applied to an unencrypted connection, where it
+would imply protection that is not there.
+
+Turning on encryption while **Host a relay on this device** is also on is called out inline: the
+on-device relay speaks plaintext only, so that pair can never connect.
+
+When a handshake fails, the banner says why — "Certificate fingerprint does not match. Expected
+…, got …" — rather than surfacing the `SSLHandshakeException` that wrapped it.
+
 ## Talk floor
 
 The server allows one talker per channel. Pressing PTT requests the floor and transmission begins
@@ -88,8 +111,10 @@ its own host setting at `127.0.0.1`. No separate server needed.
 
 ## Not included
 
-- No authentication, and no TLS — the transport is plain `ws://`.
+- No accounts — the access token is one shared secret for the whole channel, with no per-handset
+  revocation.
 - No audio compression; raw 16 kHz mono PCM (~32 kB/s). Fine on a LAN, wasteful over the internet.
+- The on-device relay serves plaintext only. Encryption means pointing at `ptt-server`.
 - No message history, no text chat, no per-user mute.
 
 ## Related

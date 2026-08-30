@@ -10,22 +10,33 @@
 ```bash
 ./gradlew testDebugUnitTest      # 65 tests
 ./gradlew lintDebug              # must be clean
-./gradlew connectedDebugAndroidTest   # 24 UI tests; ANDROID_SERIAL picks the device
+./gradlew connectedDebugAndroidTest   # 32 UI tests; ANDROID_SERIAL picks the device
 ```
 
-## Unit tests (65, all passing)
+## Unit tests (103, all passing)
 
 | Test class | Tests | What it pins down |
 |---|---|---|
 | `network/ProtocolSerializationTest` | 7 | Exact JSON for every message type — this is a contract with a separate codebase, so the tests assert literal wire text, not just round-trips. Includes tolerance of unknown fields |
 | `domain/ReconnectPolicyTest` | 4 | Backoff grows, respects the 30 s cap, never drops below the base, is genuinely jittered, and resets |
-| `domain/PttControllerTest` | 22 | The floor state machine, driven through a fake `PttConnection`. Most importantly: **pressing PTT must not open the microphone** — only a server `floor{isSelf:true}` may start transmission. Also `floor_busy`, another user holding the floor disabling `canTalk`, release, incoming audio reaching the player, disconnect resetting state, and `clearError` dropping a stale error without dropping the session. Then the negative space: pressing while disconnected or while somebody else holds the floor sends nothing, a second press does not send a second request, releasing what we never held sends nothing, somebody else's grant clears our pending request, and losing the socket mid-transmission closes the microphone |
+| `domain/PttControllerTest` | 24 | The floor state machine, driven through a fake `PttConnection`. Most importantly: **pressing PTT must not open the microphone** — only a server `floor{isSelf:true}` may start transmission. Also `floor_busy`, another user holding the floor disabling `canTalk`, release, incoming audio reaching the player, disconnect resetting state, and `clearError` dropping a stale error without dropping the session. Then the negative space: pressing while disconnected or while somebody else holds the floor sends nothing, a second press does not send a second request, releasing what we never held sends nothing, somebody else's grant clears our pending request, and losing the socket mid-transmission closes the microphone |
 | `data/AppSettingsTest` | 10 | Channel clamping (the old UI allowed 0 and negatives), URL construction, name URL-encoding (spaces, symbols, non-ASCII), truncation at 32 characters before the server can refuse it, the protocol version always being present, and the `10.0.2.2` default |
 | `data/ThemeModeTest` | 4 | Theme resolution against the system setting, and that an unknown stored value falls back to `SYSTEM` rather than crashing the settings read — settings outlive enum constants |
 | `ui/PttUiStatusTest` | 13 | The state→presentation mapping the app screen, the bubble, the widget and the notification all share. Precedence (holding the floor outranks everything; a dead transport outranks stale floor bookkeeping), that only `READY` offers a press, and that the control stays **live** while we hold the floor — the regression behind known-issues #20 |
 | `internalserver/InternalPttServerTest` | 5 | The on-device relay over a **real socket**: channel isolation, one-talker-at-a-time, audio without the floor rejected, invalid channel refused |
 
-## Compose UI tests (24, all passing)
+### Transport security
+
+| Test class | Tests | What it pins down |
+|---|---|---|
+| `network/PinnedTrustTest` | 13 | `PinnedTrustManager` against **real generated certificates**. The pinned one is accepted; a different one, a forged chain with the real certificate hidden behind a fake leaf, an empty chain, a null chain and an empty pin are all rejected. An expired certificate is rejected even when the fingerprint matches, and a not-yet-valid one says to check the clock. `getAcceptedIssuers()` stays empty so the manager cannot end up on OkHttp's chain-cleaning path. This is the one place where being wrong is silent: a trust manager that accepts everything looks exactly like a working one |
+| `data/CertificatePinTest` | 11 | Every shape a fingerprint arrives in — colons or not, either case, spaces, dashes, wrapped lines from a terminal copy. A partial or non-hex value normalizes to *empty*, never to a pin that matches nothing |
+| `internalserver/InternalPttServerAuthTest` | 4 | The on-device relay applies the same token gate as `ptt-server`, over a real socket. Hosting on a phone must not be a way to accidentally run an open relay |
+
+`PinnedTrustTest` generates its certificates with `ktor-network-tls-certificates`, added as a
+**test-only** dependency — it is not in the APK.
+
+## Compose UI tests (32, all passing)
 
 Run on a device: `ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest`. Verified on both a
 1080x2400 phone (API 35, portrait branch) and a 2560x1600 tablet (API 34, landscape branch).
@@ -85,8 +96,53 @@ adb -s <serial> exec-out screencap -p > shot.png
 adb -s <serial> shell input swipe X Y X Y 5000     # press and hold
 ```
 
+## Pinned TLS against a real relay (opt-in)
+
+`androidTest/network/TlsRelayIntegrationTest` is the one thing JVM unit tests cannot settle:
+Android's TLS stack is Conscrypt, not the JDK's, and OkHttp treats a hand-written trust manager
+differently there. A pin that verifies correctly under `testDebugUnitTest` can still fail to
+connect on a handset, so it is checked where it actually runs.
+
+It needs a relay, so it skips itself unless pointed at one:
+
+```bash
+# start a TLS relay and read its fingerprint
+cd ../ptt-server
+docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d --build
+FP=$(docker exec ptt-server cat /app/certs/ptt.p12.sha256 | tr -d ':')
+
+cd ../ptt-client-android
+ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.github.devapro.pttdroid.network.TlsRelayIntegrationTest \
+  -Pandroid.testInstrumentationRunnerArguments.relayHost=10.0.2.2 \
+  -Pandroid.testInstrumentationRunnerArguments.relayPort=8443 \
+  -Pandroid.testInstrumentationRunnerArguments.relayFingerprint=$FP \
+  -Pandroid.testInstrumentationRunnerArguments.relayToken=<the PTT_AUTH_TOKEN from .env>
+```
+
+Three cases: a pinned self-signed relay is reachable; the wrong fingerprint is refused *with a
+message that names the problem*, because that string is what the user sees in the error banner;
+and a relay that wants a token refuses a client without one.
+
+## The release pipeline
+
+`.github/workflows/release.yml` is not covered by a test, so its risky parts were exercised by
+hand against a throwaway repository before it shipped: the tag-versus-`version.properties` check
+(matching tag, mismatched tag, and a non-tag `workflow_dispatch`), the F-Droid index build over a
+signed APK, and a **second** release proving the repository accumulates versions rather than
+replacing them — that last one is the failure that would silently strand users on an old build.
+
+The repository config is generated with a YAML dumper rather than a heredoc, which was verified
+with a password containing `:`, `#` and braces; the heredoc version produced a file that parsed
+as something else. The published branch was checked to contain no `config.yml`, no keystore and
+no `.p12`.
+
 ## Gaps
 
-- No Compose UI tests yet (`ui-test-junit4` is on the classpath and unused).
 - No instrumented tests for the service, overlay or widget — these are covered manually above.
 - No load test for the relay's drop-under-backpressure behaviour.
+- The TLS integration test is opt-in and not part of the default gate, because it needs a relay
+  it cannot start itself.
+- `deploy/deploy.sh` in the server repo has its preflight and failure paths exercised, and a
+  `--dry-run` mode, but the remote half is not covered by an automated test — it needs a second
+  host.

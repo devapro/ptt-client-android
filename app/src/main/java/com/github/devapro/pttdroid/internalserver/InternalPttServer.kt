@@ -1,5 +1,6 @@
 package com.github.devapro.pttdroid.internalserver
 
+import com.github.devapro.pttdroid.network.PttEndpoint.Companion.TOKEN_HEADER
 import com.github.devapro.pttdroid.network.protocol.AudioParams
 import com.github.devapro.pttdroid.network.protocol.ErrorCodes
 import com.github.devapro.pttdroid.network.protocol.Floor
@@ -31,6 +32,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerializationException
 import timber.log.Timber
+import java.security.MessageDigest
 import java.util.UUID
 
 /**
@@ -50,10 +52,20 @@ class InternalPttServer {
     private val channels = HashMap<Int, ServerChannel>()
     private val lock = Mutex()
 
+    /** What the running instance was started with, so a settings change can restart it. */
+    @Volatile
+    var runningConfig: Config? = null
+        private set
+
     val isRunning: Boolean get() = engine != null
 
-    fun start(port: Int) {
+    /** The port and shared secret one run of the embedded relay was started with. */
+    data class Config(val port: Int, val accessToken: String)
+
+    fun start(port: Int, accessToken: String = "") {
         if (engine != null) return
+        val config = Config(port, accessToken)
+        runningConfig = config
         val server = embeddedServer(CIO, port = port, host = "0.0.0.0") {
             install(WebSockets) {
                 pingPeriodMillis = 15_000
@@ -62,7 +74,7 @@ class InternalPttServer {
                 masking = false
             }
             routing {
-                webSocket("/channel/{channelId}") { handleSession() }
+                webSocket("/channel/{channelId}") { handleSession(config) }
             }
         }
         engine = server
@@ -73,6 +85,7 @@ class InternalPttServer {
     fun stop() {
         val server = engine ?: return
         engine = null
+        runningConfig = null
         runCatching { server.stop(gracePeriodMillis = 300, timeoutMillis = 1_000) }
             .onFailure { Timber.d("Embedded relay stop failed: %s", it.toString()) }
         Timber.i("Embedded PTT relay stopped")
@@ -114,13 +127,34 @@ class InternalPttServer {
             for ((id, session) in sessions) session.send(floorFor(id))
         }
 
-        fun broadcastPeers() {
+        /**
+         * [exceptId] is for the join case: `welcome` has to be the first message a client
+         * sees, and the joiner's own count is already in it. Mirrors `PttChannel` in the
+         * server repo.
+         */
+        fun broadcastPeers(exceptId: String? = null) {
             val message = Peers(sessions.size)
-            for (session in sessions.values) session.send(message)
+            for ((id, session) in sessions) {
+                if (id != exceptId) session.send(message)
+            }
         }
     }
 
-    private suspend fun io.ktor.server.websocket.DefaultWebSocketServerSession.handleSession() {
+    private suspend fun io.ktor.server.websocket.DefaultWebSocketServerSession.handleSession(
+        config: Config,
+    ) {
+        // Same gate as the standalone relay: when a token is configured, no token means no
+        // channel. Hosting on a phone does not make the Wi-Fi it is on trustworthy.
+        if (config.accessToken.isNotEmpty() && !hasValidToken(config.accessToken)) {
+            outgoing.send(
+                Frame.Text(
+                    ProtocolError(ErrorCodes.UNAUTHORIZED, "An access token is required").encode(),
+                ),
+            )
+            close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "unauthorized"))
+            return
+        }
+
         val version = call.request.queryParameters["v"]?.toIntOrNull()
         if (version != null && version != PROTOCOL_VERSION) {
             outgoing.send(
@@ -164,7 +198,7 @@ class InternalPttServer {
         val peers = lock.withLock {
             val channel = channels.getOrPut(channelId) { ServerChannel() }
             channel.sessions[session.id] = session
-            channel.broadcastPeers()
+            channel.broadcastPeers(exceptId = session.id)
             channel.sessions.size
         }
         session.send(
@@ -206,6 +240,17 @@ class InternalPttServer {
             session.outbound.close()
             writer.cancel()
         }
+    }
+
+    /** Constant-time, for the same reason the standalone relay's check is. */
+    private fun io.ktor.server.websocket.DefaultWebSocketServerSession.hasValidToken(
+        expected: String,
+    ): Boolean {
+        val presented = call.request.headers[TOKEN_HEADER] ?: return false
+        return MessageDigest.isEqual(
+            presented.toByteArray(Charsets.UTF_8),
+            expected.toByteArray(Charsets.UTF_8),
+        )
     }
 
     private suspend fun relay(channelId: Int, from: ServerSession, frame: Frame.Binary) {

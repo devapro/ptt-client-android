@@ -30,6 +30,9 @@ class SettingsRepository(private val context: Context) {
             floatingButtonEnabled = prefs[KEY_FLOATING] ?: false,
             themeMode = ThemeMode.fromStorage(prefs[KEY_THEME]),
             hostServerEnabled = prefs[KEY_HOST_SERVER] ?: false,
+            useTls = prefs[KEY_USE_TLS] ?: false,
+            certificateSha256 = prefs[KEY_CERT_SHA256].orEmpty(),
+            accessToken = prefs[KEY_ACCESS_TOKEN].orEmpty(),
             floatingButtonX = prefs[KEY_FLOATING_X] ?: 0,
             floatingButtonY = prefs[KEY_FLOATING_Y] ?: 300,
         )
@@ -52,6 +55,11 @@ class SettingsRepository(private val context: Context) {
         prefs[KEY_FLOATING] = settings.floatingButtonEnabled
         prefs[KEY_HOST_SERVER] = settings.hostServerEnabled
         prefs[KEY_THEME] = settings.themeMode.name
+        prefs[KEY_USE_TLS] = settings.useTls
+        // Stored normalized, so what is compared at handshake time never depends on how the
+        // fingerprint happened to be pasted.
+        prefs[KEY_CERT_SHA256] = CertificatePin.normalize(settings.certificateSha256)
+        prefs[KEY_ACCESS_TOKEN] = settings.accessToken.trim().take(AppSettings.MAX_TOKEN_LENGTH)
     }
 
     suspend fun setServer(host: String, port: Int) = edit { prefs ->
@@ -93,6 +101,9 @@ class SettingsRepository(private val context: Context) {
         val KEY_FLOATING = booleanPreferencesKey("floating_button_enabled")
         val KEY_THEME = stringPreferencesKey("theme_mode")
         val KEY_HOST_SERVER = booleanPreferencesKey("host_server_enabled")
+        val KEY_USE_TLS = booleanPreferencesKey("use_tls")
+        val KEY_CERT_SHA256 = stringPreferencesKey("certificate_sha256")
+        val KEY_ACCESS_TOKEN = stringPreferencesKey("access_token")
         val KEY_FLOATING_X = intPreferencesKey("floating_button_x")
         val KEY_FLOATING_Y = intPreferencesKey("floating_button_y")
     }

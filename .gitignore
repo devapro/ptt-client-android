@@ -8,3 +8,10 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+### Release signing ###
+# Never commit key material. The release workflow decodes these from CI secrets at build time.
+*.jks
+*.keystore
+*.p12
+keystore.properties

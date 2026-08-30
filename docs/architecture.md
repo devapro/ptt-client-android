@@ -32,13 +32,13 @@ down a transmission in flight.
 | Package | Contents |
 |---|---|
 | `domain/` | `PttController`, `PttState` + `ConnectionStatus`, `ReconnectPolicy`, `PttSessionLauncher` |
-| `network/` | `PttConnection` (interface), `KtorPttConnection`, `protocol/Messages.kt` |
+| `network/` | `PttConnection` (interface), `KtorPttConnection`, `PttEndpoint`, `protocol/Messages.kt`, `tls/PinnedTrust.kt` |
 | `audio/` | `AudioConfig`, `AudioContracts`, `VoiceRecorder`, `VoicePlayer` |
 | `service/` | `PttForegroundService`, `PttNotifications`, `PttServiceCommands` |
 | `overlay/` | `OverlayController`, `OverlayBubbleView` |
 | `widget/` | `PttWidget`, `PttWidgetAction`, `PttWidgetReceiver`, `PttWidgetUpdater` |
 | `internalserver/` | `InternalPttServer` — optional on-device relay |
-| `data/settings/` | `AppSettings`, `ThemeMode`, `SettingsRepository` (DataStore) |
+| `data/settings/` | `AppSettings`, `ThemeMode`, `CertificatePin`, `SettingsRepository` (DataStore) |
 | `mvi/` | `ActionProcessor`, `Reducer`, `MviViewModel` |
 | `model/` | `MainAction`, `ScreenState`, `MainEvent` |
 | `reducer/` | one reducer per action (10) |
@@ -117,6 +117,39 @@ Application-scoped singletons: `SettingsRepository`, `PttSessionLauncher`, `Voic
 `OverlayController`, `InternalPttServer`, plus a named `sessionScope`
 (`SupervisorJob + Dispatchers.IO`) that outlives every Activity. Reducers are factories; the
 ViewModel uses `viewModelOf`.
+
+## Transport security
+
+`AppSettings` carries three fields the transport needs, and `endpoint()` folds them into one
+`PttEndpoint` — url, pin, token — so they can only change together. A url `String` alone invited
+exactly the half-applied change this prevents: switching to `wss://` without the matching pin, or
+moving to a different relay while keeping the old token.
+
+Three states, and the middle one is the common misunderstanding:
+
+| Setting | What the client does |
+|---|---|
+| Encryption off | `ws://`. Cleartext, permitted by `network_security_config.xml` |
+| Encryption on, no fingerprint | `wss://` verified the normal way, against the device's certificate authorities. This is the ngrok / real-certificate path |
+| Encryption on, fingerprint set | `wss://` trusting **only** that certificate, by SHA-256 of its DER encoding |
+
+The pinned case installs `PinnedTrustManager` and skips hostname verification, because a
+self-signed relay's address is not stable enough to name in a certificate and the pin already
+identifies the peer more precisely than a name would. It still enforces the certificate's
+validity window: a pin says *which* key, the window says *for how long*.
+
+`PinnedTrustManager.getAcceptedIssuers()` returns nothing on purpose. Advertising issuers would
+put it on OkHttp's chain-cleaning path, which wants to build a chain up to a known root — there
+is no root, and the fingerprint has already settled the question. OkHttp only invokes the cleaner
+when a `CertificatePinner` is configured, and none is.
+
+`CertificatePin` normalizes what people actually paste: colons or not, upper or lower case, with
+stray spaces or newlines from a terminal copy. Anything that is not a complete 64-hex-character
+fingerprint normalizes to empty rather than to a pin that would match nothing.
+
+The `HttpClient` is rebuilt only when `PttEndpoint.trustProfile` changes. The TLS stack is baked
+into the OkHttp engine, so a pin change needs a new client — but rebuilding per connection
+attempt would throw away the connection pool on every reconnect.
 
 ## Design decisions worth knowing
 

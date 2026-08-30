@@ -17,7 +17,7 @@
 | 11 | `UtilPermission.resultListeners` was never cleared and retained the Activity; legacy `onRequestPermissionsResult` | Activity Result API; both permission classes deleted |
 | 12 | Channel could go to 0 and negative | Clamped to 1..99 in the UI, the reducer and the settings layer |
 | 13 | `Theme.kt` set the deprecated `window.statusBarColor`, a no-op under targetSdk 36's enforced edge-to-edge | `enableEdgeToEdge()` + `safeDrawingPadding()` |
-| 14 | Two AGP template stub tests, no CI | 65 unit + 24 UI tests, and `.github/workflows/ci.yml` |
+| 14 | Two AGP template stub tests, no CI | 103 unit + 32 UI tests, and three workflows: CI, tagged releases, and Pages |
 | 15 | Deprecated `android.preference.PreferenceManager` | DataStore (`data/settings/`) |
 | 16 | Dead code: `PTTWebSocketListener`, unused permission constants, unused Ktor dependency | Removed; Ktor is now the actual client |
 | 17 | Hardcoded `ws://192.168.100.4:8000` | User-configurable host/port in Settings |
@@ -34,18 +34,25 @@
 | 29 | The bubble showed no channel, so the one surface visible while another app is in front could not tell you which channel a press would go out on | It carries the channel number, a microphone glyph struck through when a press would do nothing, and the state word |
 | 30 | **Undefined Material colour roles fell back to the baseline purple scheme.** `secondaryContainer` and the rest were never set, so a lavender chip appeared inside the segmented control on an otherwise green-and-slate screen | Every role is defined in both schemes (`ui/theme/Theme.kt`) |
 | 31 | No Compose UI tests at all — `ui-test-junit4` was on the classpath and unused, so gesture lifecycle and semantics were verified only by hand | 24 instrumented tests across the button, the main screen and settings, run on a phone and a tablet |
+| 32 | **`peers` arrived before `welcome`.** The protocol spec says `welcome` is the first thing a client sees, but the join broadcast sent the new session its own peer count first — in all three implementations. Found by an integration test that read the first control frame and got `Peers` | The join broadcast excludes the joiner (`PttChannel.broadcastLocked(exceptId = ...)` in the server repo, `ServerChannel.broadcastPeers(exceptId = ...)` here); the count is already in `welcome`. Pinned by a test in `ChannelRelayTest` |
+| 33 | **A `ToggleRow`'s label was inert.** Only the switch itself responded, so the text saying what the setting does was not a target for touch or for a screen reader — and on a tablet the switch sits at the far edge of a 640dp form | The whole row is `toggleable` with `Role.Switch`; the `Switch` takes `onCheckedChange = null` so there is one target, not two |
 | 27 | `InternalPttServerTest` raced: it released the floor on one socket and immediately requested it on another, with no ordering guarantee between them, so the server was free to answer `floor_busy` | The test waits for the release broadcast before requesting |
 
 ## Still open
 
-- **No authentication and no TLS.** The transport is plain `ws://`. Do not expose the relay to the
-  open internet.
+- **No accounts.** The access token is one shared secret for everybody: no per-handset
+  credentials, no revocation, no audit trail. Changing it means telling everyone the new one.
+- **Pinning does not rotate.** Replacing the relay's keypair means re-pairing every client. Fine
+  for a handful of handsets; a permanently public relay wants a real certificate or a tunnel.
+- **The on-device relay is plaintext only.** Turning on encryption while hosting locally is
+  called out in Settings, but the embedded relay does not serve `wss://` — generating and
+  managing a keystore on a handset is a lot for what it buys.
 - **No audio compression.** Raw 16 kHz mono PCM is ~32 kB/s. Fine on a LAN, wasteful over the
   internet — Opus would be the natural next step, and would need a protocol version bump.
-- **No public test server.** Deliberately out of scope; the server repo ships a `Dockerfile` and
-  `docker-compose.yml` so a deployment is one command.
+- **No public test server.** Deliberately out of scope; the server repo ships a `Dockerfile`,
+  three compose files and `deploy/deploy.sh` so a deployment is one command.
 - **The service, the overlay and the widget have no automated tests.** The button, the main screen
-  and settings do (24 Compose UI tests); the three background surfaces are still verified by hand,
+  and settings do (32 Compose UI tests); the three background surfaces are still verified by hand,
   because each needs a real service, a `WindowManager` window, or a host launcher.
 - **Legacy launcher rasters are generated, not designed.** `mipmap-*/ic_launcher.png` (API 24–25
   only) is rendered by a script, since no image tooling is available here; API 26+ uses the
@@ -60,7 +67,23 @@
   current AndroidX versions silently require compileSdk 37.
 - **Cleartext must be permitted.** `ws://` is blocked by Android's network security policy;
   `res/xml/network_security_config.xml` allows it. The old Java-WebSocket client bypassed the policy
-  entirely, so this only surfaced after moving to OkHttp.
+  entirely, so this only surfaced after moving to OkHttp. It stays permitted because `ws://` is
+  still the default on a LAN — `wss://` is opt-in per relay, not a global switch.
+- **A pinned trust manager must advertise no accepted issuers.** Returning them puts it on
+  OkHttp's chain-cleaning path, which tries to build a chain up to a known root; a self-signed
+  certificate has none, and the connection fails with `SSLPeerUnverifiedException` even though the
+  fingerprint matched. The cleaner only runs when a `CertificatePinner` is configured, and none is
+  — the trust manager decides.
+- **A masked text field still reports its raw value to the accessibility tree.** `InputText`
+  carries the real string whatever the `VisualTransformation` does, so a UI test asserting
+  "the token is not visible" passes whether or not anything is hidden. Assert on the rendered
+  bullets instead.
+- **HTTP strips leading and trailing whitespace from header values.** A token that differs from
+  the real one only by surrounding spaces gets in, which is why the settings layer trims before
+  storing rather than relying on the comparison.
+- **Lint flags every hand-written trust manager and hostname verifier** (`CustomX509TrustManager`,
+  `BadHostnameVerifier`) and it is right to. The two suppressions in `network/tls/PinnedTrust.kt`
+  are annotated with why; do not add more without the same justification.
 - **A microphone foreground service cannot be started from the background** on Android 14+. Start it
   from a visible Activity or an exempt gesture (notification action, widget tap); the widget and
   overlay only toggle transmit on an already-running service.

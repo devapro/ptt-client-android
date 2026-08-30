@@ -360,7 +360,24 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
 </section>
 
 <section class="wrap panel">
-  <p class="label">Install</p>
+  <p class="label">Get it</p>
+  <div>
+    <h2>Add the<br>repository</h2>
+    <p class="muted" style="margin-top:22px; max-width:62ch">Every tagged release is signed and
+    published to this project's own F-Droid repository by CI. In the F-Droid app, go to
+    <em>Settings&nbsp;&rarr;&nbsp;Repositories&nbsp;&rarr;&nbsp;+</em> and add:</p>
+<pre>https://devapro.github.io/ptt-client-android/fdroid/repo</pre>
+    <p class="muted small">Check the fingerprint F-Droid shows against the one printed in the
+    <a href="https://github.com/devapro/ptt-client-android/actions/workflows/release.yml">release
+    workflow's log</a> — that is the only thing tying this repository to the project. Signed APKs
+    are also attached to each
+    <a href="https://github.com/devapro/ptt-client-android/releases">GitHub release</a>.</p>
+    <p class="muted small">You still need a relay. That is the next section.</p>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Build it</p>
   <div>
     <h2>Two commands</h2>
     <div class="cols" style="margin-top:34px; align-items:start">
@@ -440,14 +457,14 @@ adb install -r -g \
         One controller owns the connection, the microphone and the speaker, hosted by a foreground
         service — the screen, the floating bubble and the widget are all observers of a single
         state flow.</p>
-        <p class="small" style="margin-top:.9em">65 unit tests · 24 Compose UI tests</p>
+        <p class="small" style="margin-top:.9em">103 unit tests · 32 Compose UI tests</p>
       </div>
       <div>
         <h3><a href="https://github.com/devapro/ptt-server">ptt-server</a></h3>
         <p class="muted small">Kotlin and Ktor. Per-channel isolation and server-enforced floor
         control. Every session has its own bounded outbound queue drained by its own writer
         coroutine, so one slow peer cannot stall the channel.</p>
-        <p class="small" style="margin-top:.9em">14 tests, driven through real WebSocket clients</p>
+        <p class="small" style="margin-top:.9em">45 tests, driven through real WebSocket clients</p>
       </div>
     </div>
     <p class="muted small" style="margin-top:30px">
@@ -462,9 +479,12 @@ adb install -r -g \
 
 <footer class="wrap">
   <div class="note warn">
-    <strong>No authentication, and no TLS.</strong> The transport is plain <code>ws://</code>.
-    This is built for a LAN. Do not expose the relay to the open internet without putting TLS
-    termination and some form of authentication in front of it.
+    <strong>One shared secret, not accounts.</strong> The relay takes an optional access token and
+    can serve <code>wss://</code> with a certificate it generates itself, which the client trusts
+    by SHA-256 fingerprint rather than by chain — there is no authority to appeal to on a LAN.
+    That admits one key and nothing else, at the cost of rotation: a new keypair means re-pairing
+    every handset. There are no per-user credentials, no revocation, and no rate limiting on the
+    handshake.
   </div>
   <p class="muted small" style="margin-top:24px">
     Also not included: audio compression — it is raw 16&nbsp;kHz mono PCM, roughly 32&nbsp;kB/s
@@ -474,6 +494,7 @@ adb install -r -g \
     <a href="https://github.com/devapro/ptt-client-android">Client</a>
     <a href="https://github.com/devapro/ptt-server">Server</a>
     <a href="https://github.com/devapro/ptt-server/blob/main/docs/protocol.md">Protocol</a>
+    <a href="https://github.com/devapro/ptt-client-android/blob/main/LICENSE">GPL-3.0</a>
   </nav>
 </footer>
 

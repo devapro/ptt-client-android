@@ -1,0 +1,66 @@
+# Publishes the project site: the landing page from docs/, plus the F-Droid repository that
+# release.yml keeps on the fdroid-repo branch, served together at one origin.
+#
+# Both halves are assembled here rather than deployed separately, because a Pages deployment
+# replaces the whole site — publishing the landing page on its own would delete the F-Droid
+# repository out from under everyone who had added it.
+#
+# ONE-TIME SETUP: Settings -> Pages -> Source must be "GitHub Actions", not "Deploy from a
+# branch". While it is set to a branch, this workflow's deployments are ignored.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/pages.yml'
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never two deployments at once, and never cancel one in flight — a half-written site is worse
+# than a stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy the site
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect the landing page
+        run: |
+          mkdir -p site
+          cp -r docs/. site/
+          # Pages runs Jekyll over the artifact otherwise, which drops files beginning with "_".
+          touch site/.nojekyll
+
+      - name: Add the F-Droid repository, if one has been published
+        run: |
+          if git ls-remote --exit-code --heads origin fdroid-repo >/dev/null 2>&1; then
+            git fetch --depth 1 origin fdroid-repo
+            git worktree add fdroid-state FETCH_HEAD
+            mkdir -p site/fdroid
+            cp -r fdroid-state/repo site/fdroid/repo
+            echo "Included $(find site/fdroid/repo -name '*.apk' | wc -l) APK(s)"
+          else
+            echo "No fdroid-repo branch yet — publishing the landing page alone."
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

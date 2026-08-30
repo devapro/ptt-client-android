@@ -136,11 +136,23 @@ class PttForegroundService : Service() {
      * client still connects over the socket like any other peer.
      */
     private fun syncInternalServer(settings: AppSettings) {
-        if (settings.hostServerEnabled && !internalServer.isRunning) {
-            runCatching { internalServer.start(settings.serverPort) }
-                .onFailure { Timber.e(it, "Could not start the embedded relay") }
-        } else if (!settings.hostServerEnabled && internalServer.isRunning) {
+        if (!settings.hostServerEnabled) {
+            if (internalServer.isRunning) internalServer.stop()
+            return
+        }
+
+        val wanted = InternalPttServer.Config(
+            port = settings.serverPort,
+            accessToken = settings.accessToken.trim(),
+        )
+        // A port or token change has to reach a relay that is already up: leaving it on the old
+        // pair means the setting appears saved while the relay still answers to the old one.
+        if (internalServer.isRunning && internalServer.runningConfig != wanted) {
             internalServer.stop()
+        }
+        if (!internalServer.isRunning) {
+            runCatching { internalServer.start(wanted.port, wanted.accessToken) }
+                .onFailure { Timber.e(it, "Could not start the embedded relay") }
         }
     }
 

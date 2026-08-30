@@ -31,8 +31,8 @@ interface PttConnection {
 
     val events: Flow<ConnectionEvent>
 
-    /** Opens a connection to [url]. Suspends until the socket closes. */
-    suspend fun connect(url: String)
+    /** Opens a connection to [endpoint]. Suspends until the socket closes. */
+    suspend fun connect(endpoint: PttEndpoint)
 
     suspend fun disconnect()
 

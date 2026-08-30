@@ -35,11 +35,13 @@ class PttControllerTest {
         val audioFrames = mutableListOf<ByteArray>()
         val inbound = MutableSharedFlow<ConnectionEvent>(extraBufferCapacity = 64)
         var connectCalls = 0
+        val endpoints = mutableListOf<com.github.devapro.pttdroid.network.PttEndpoint>()
 
         override val events: Flow<ConnectionEvent> = inbound
 
-        override suspend fun connect(url: String) {
+        override suspend fun connect(endpoint: com.github.devapro.pttdroid.network.PttEndpoint) {
             connectCalls++
+            endpoints += endpoint
             // Does not return: the real one suspends until the socket closes.
             kotlinx.coroutines.awaitCancellation()
         }
@@ -74,7 +76,11 @@ class PttControllerTest {
         override fun release() { released++ }
     }
 
-    private fun harness(scope: TestScope): Triple<PttController, FakeConnection, Pair<FakeRecorder, FakePlayer>> {
+    private fun harness(
+        scope: TestScope,
+        settings: com.github.devapro.pttdroid.data.settings.AppSettings =
+            com.github.devapro.pttdroid.data.settings.AppSettings(),
+    ): Triple<PttController, FakeConnection, Pair<FakeRecorder, FakePlayer>> {
         val connection = FakeConnection()
         val recorder = FakeRecorder()
         val player = FakePlayer()
@@ -82,11 +88,54 @@ class PttControllerTest {
             connection = connection,
             recorder = recorder,
             player = player,
-            settingsProvider = { com.github.devapro.pttdroid.data.settings.AppSettings() },
+            settingsProvider = { settings },
             channelPersister = {},
             scope = scope,
         )
         return Triple(controller, connection, recorder to player)
+    }
+
+    @Test
+    fun `the session dials the endpoint the settings describe`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val pin = "FD0EFB7BD3BB639FA169910467D1C65C3302269A87C899C2F05DE933CB500689"
+        val (controller, connection, _) = harness(
+            this,
+            com.github.devapro.pttdroid.data.settings.AppSettings(
+                serverHost = "relay.example.com",
+                serverPort = 8443,
+                channel = 4,
+                useTls = true,
+                certificateSha256 = pin,
+                accessToken = "s3cret",
+            ),
+        )
+
+        controller.start()
+
+        val endpoint = connection.endpoints.single()
+        assertTrue(endpoint.url.startsWith("wss://relay.example.com:8443/channel/4"))
+        assertEquals(pin, endpoint.pinnedSha256)
+        assertEquals("s3cret", endpoint.accessToken)
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `a plaintext session carries no pin`() = runTest(UnconfinedTestDispatcher()) {
+        val (controller, connection, _) = harness(
+            this,
+            com.github.devapro.pttdroid.data.settings.AppSettings(
+                certificateSha256 = "FD0EFB7BD3BB639FA169910467D1C65C3302269A87C899C2F05DE933CB500689",
+            ),
+        )
+
+        controller.start()
+
+        assertEquals("", connection.endpoints.single().pinnedSha256)
+
+        controller.shutdown()
     }
 
     @Test

@@ -1,0 +1,34 @@
+A walkie-talkie for a group that already has a network. You run the relay; nothing goes through
+anyone else's servers, and there is no account to make.
+
+Hold the button, talk, let go. The channel is arbitrated by the relay, so exactly one person is
+on air at a time — press while someone else is talking and you are told, rather than both of you
+transmitting into the same silence.
+
+The interface is built for the way a radio is actually used: one-handed, in motion, often without
+looking. State is a colour and a single word, and the same colour means the same thing on the
+main screen, on the floating button, in the widget and in the notification.
+
+<b>What it does</b>
+
+* Push-to-talk over your own WebSocket relay, on a channel from 1 to 99
+* Server-arbitrated talk floor — one talker per channel, never two
+* Keeps talking with the screen off, or while you are in another app, via a foreground service
+* A draggable floating button that shows the channel number and doubles as the transmit control
+* A home-screen widget for transmit and status
+* Light, dark, or follow the system
+* Optional encryption: connect over wss://, trusting a self-hosted relay by its certificate
+  fingerprint, with an optional shared access token
+* Can host the relay on the device itself, so a group on one Wi-Fi needs no separate machine
+
+<b>What it does not do</b>
+
+There are no accounts, no message history, no text chat, and no audio compression — it is raw
+16 kHz mono PCM, which is fine on a LAN and wasteful over a metered connection. The access token
+is one shared secret for the whole channel: there are no per-handset credentials and no way to
+revoke one device.
+
+<b>You need a relay</b>
+
+The companion server is a single Kotlin/Ktor process with no database and no state to back up.
+It runs with one Docker command, and can generate its own TLS certificate on first boot.

@@ -27,6 +27,19 @@ transmission is blue, because green here means "the channel is yours" — the op
 else holding the floor. Nothing depends on colour alone; every state also changes the word on the
 button and the glyph above it. The reasoning is written down in [`docs/ui-design.md`](docs/ui-design.md).
 
+## Install
+
+From this project's own F-Droid repository — add it in the F-Droid app under
+**Settings → Repositories → +**:
+
+```
+https://devapro.github.io/ptt-client-android/fdroid/repo
+```
+
+Every release is signed and published there by CI, alongside a signed APK on the
+[GitHub release](https://github.com/devapro/ptt-client-android/releases). How that works, and how
+to submit to the official F-Droid catalogue: [`docs/fdroid.md`](docs/fdroid.md).
+
 ## Quick start
 
 ```bash
@@ -36,10 +49,24 @@ adb install -r -g app/build/outputs/apk/debug/app-debug.apk
 
 Then open **Settings** and point **Relay** at your server. On an emulator, a server running on your
 development machine is at **`10.0.2.2`** — inside an emulator, `localhost` is the emulator itself.
-The screen shows the exact `ws://` URL it will dial, which is usually enough to spot a typo.
+The screen shows the exact URL it will dial, which is usually enough to spot a typo.
 
 No server? Turn on **Host a relay on this device**, point that phone's host at `127.0.0.1`, and
 point the other phones at its LAN address.
+
+### Reaching a relay that is not on your Wi-Fi
+
+**Settings → Security** has three settings, matching whatever the relay was started with:
+
+| | |
+|---|---|
+| **Encrypted connection** | `wss://` instead of `ws://` |
+| **Certificate fingerprint** | For a relay serving its own self-signed certificate — paste the SHA-256 `ptt-server` prints on startup. Colons and case do not matter. Leave empty when the relay has a publicly trusted certificate, such as through a tunnel |
+| **Access token** | The relay's shared secret, sent as a header |
+
+A pinned fingerprint is a stricter guarantee than a certificate authority gives: it admits one
+key and nothing else. What it costs is rotation — replacing the relay's keypair means re-pairing
+every handset.
 
 Toolchain and the two build constraints that are easy to break:
 [`docs/build-and-run.md`](docs/build-and-run.md).
@@ -75,16 +102,18 @@ on the floating bubble and another on the big button.
 ## Tests
 
 ```bash
-./gradlew testDebugUnitTest                                  # 65 JVM tests
-ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest   # 24 Compose UI tests
-./gradlew lintDebug                                          # must stay clean
+./gradlew testDebugUnitTest                                  # 103 JVM tests
+ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest   # 32 Compose UI tests
+./gradlew lintDebug                                          # 12 pre-existing findings, no more
 ```
 
 The unit tests are mostly about the talk floor — above all that **pressing PTT must not open the
 microphone**, only a server grant may. The UI tests are about the gesture: the request leaves on
 touch-down, and the release fires even when state changes under a held finger, because losing that
-release strands the floor with the microphone open. Coverage map:
-[`docs/testing.md`](docs/testing.md).
+release strands the floor with the microphone open. The pinned-TLS trust manager is tested
+against real generated certificates, and there is an opt-in instrumented test that connects to an
+actual `wss://` relay — Android's TLS stack is Conscrypt, not the JDK's, so that path cannot be
+settled on the JVM alone. Coverage map: [`docs/testing.md`](docs/testing.md).
 
 ## Project site
 
@@ -110,13 +139,20 @@ python3 -m http.server -d docs 8080   # then open http://localhost:8080
 | [`docs/build-and-run.md`](docs/build-and-run.md) | Toolchain and build constraints |
 | [`docs/testing.md`](docs/testing.md) | Test coverage and the manual device checklist |
 | [`docs/conventions.md`](docs/conventions.md) | Kotlin and UI style rules |
-| [`docs/known-issues.md`](docs/known-issues.md) | 31 fixed defects, open gaps, platform gotchas |
+| [`docs/known-issues.md`](docs/known-issues.md) | 33 fixed defects, open gaps, platform gotchas |
+| [`docs/fdroid.md`](docs/fdroid.md) | Releasing: signing keys, the F-Droid repository, the official catalogue |
 
 The wire protocol is specified in the server repo, at `ptt-server/docs/protocol.md`.
 
 ## Not included
 
-- No authentication and no TLS — the transport is plain `ws://`. Suitable for a LAN, not for the
-  open internet.
+- No accounts — the access token is one shared secret for the whole channel, with no per-handset
+  revocation.
+- The on-device relay serves plaintext only. Encryption means pointing at `ptt-server`.
 - No audio compression; raw 16 kHz mono PCM, roughly 32 kB/s while transmitting.
 - No message history, no text chat, no per-user mute.
+
+## Licence
+
+[GNU General Public License v3.0](LICENSE) — GPL-3.0-only. If you distribute a modified build,
+publish the source for it.

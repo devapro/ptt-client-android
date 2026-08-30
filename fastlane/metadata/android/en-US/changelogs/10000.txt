@@ -1,0 +1,7 @@
+First public release.
+
+* Push-to-talk with a server-arbitrated talk floor
+* Floating button with the channel number, home-screen widget, foreground service
+* Light and dark themes
+* Optional wss:// with certificate-fingerprint pinning, and an optional access token
+* Optional on-device relay

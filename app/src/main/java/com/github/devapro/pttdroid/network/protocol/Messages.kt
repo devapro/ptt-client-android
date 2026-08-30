@@ -67,6 +67,8 @@ object ErrorCodes {
     const val NOT_FLOOR_HOLDER = "not_floor_holder"
     const val FRAME_TOO_LARGE = "frame_too_large"
     const val MALFORMED_MESSAGE = "malformed_message"
+    const val UNAUTHORIZED = "unauthorized"
+    const val CHANNEL_FULL = "channel_full"
 }
 
 val ProtocolJson: Json = Json {

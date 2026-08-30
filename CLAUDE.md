@@ -10,6 +10,11 @@ connection, microphone and speaker, and it is hosted by `service/PttForegroundSe
 Activity. The UI, the floating bubble and the widget are all observers of its single
 `StateFlow<PttState>`. Do not introduce a second source of truth for connection or floor state.
 
+**The one thing to know before changing the transport:** `network/PttEndpoint` bundles the url,
+the pinned certificate fingerprint and the access token, and `AppSettings.endpoint()` is the only
+thing that builds one. Transport security is documented in
+[`docs/architecture.md`](docs/architecture.md#transport-security).
+
 **The one thing to know before changing the UI:** `ui/PttUiStatus` is the single mapping from
 `PttState` to colour and wording, and the app screen, the floating bubble, the Glance widget and
 the notification all read it. Do not let a surface invent its own colours or labels — a colour has
@@ -23,10 +28,11 @@ Package map and the MVI loop: [`docs/architecture.md`](docs/architecture.md). Do
 
 ```bash
 ./gradlew assembleDebug          # debug APK
-./gradlew testDebugUnitTest      # 65 unit tests
-./gradlew lintDebug              # must stay clean
-ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest   # 24 Compose UI tests
+./gradlew testDebugUnitTest      # 103 unit tests
+./gradlew lintDebug              # 12 pre-existing findings; do not add a 13th
+ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest   # 32 Compose UI tests
 ./gradlew build                  # full build
+./gradlew assembleRelease        # unsigned unless PTT_KEYSTORE_PATH and friends are set
 adb -s <serial> install -r -g app/build/outputs/apk/debug/app-debug.apk
 ```
 
@@ -44,6 +50,16 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
   require it. Check `minCompileSdk` in the AAR's `aar-metadata.properties` first — see
   [`docs/build-and-run.md`](docs/build-and-run.md).
 - **Never hardcode a server host or port.** They are user settings in `data/settings/AppSettings.kt`.
+- **The transport's url, pin and token travel together as `PttEndpoint`.** Do not add a fourth
+  connection parameter that bypasses it — a bare url `String` is what let `wss://` be switched on
+  without its matching pin.
+- **`PinnedTrustManager.getAcceptedIssuers()` must stay empty.** Returning issuers puts it on
+  OkHttp's chain-cleaning path, which needs a root a self-signed certificate does not have, and
+  the connection then fails despite a matching fingerprint. See
+  [`docs/known-issues.md`](docs/known-issues.md).
+- **Compare secrets in constant time** and keep them out of URLs — the access token is a header.
+- **Do not weaken `network_security_config.xml`.** Cleartext is permitted because `ws://` is
+  still the LAN default; that is not licence to relax anything else.
 - **Emulators reach the host machine at `10.0.2.2`, never `localhost`** (this is the default host).
 - **No logging on a per-audio-frame path** — `VoiceRecorder`'s read loop and `VoicePlayer.play()`.
   See [`docs/known-issues.md`](docs/known-issues.md) #10.
@@ -54,9 +70,22 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
   strands the talk floor with the microphone open. See [`docs/known-issues.md`](docs/known-issues.md) #20.
 - **No dynamic colour.** Colour is the readout here, and it has to match on three surfaces that
   cannot follow a wallpaper-derived scheme.
-- `docs/index.html` is the product landing page served by GitHub Pages from `main` / `docs`. Its
-  screenshots in `docs/img/` are real device captures — retake them rather than editing them if
-  the UI changes.
+- `docs/index.html` is the product landing page. It is served by GitHub Pages **from a workflow**
+  (`.github/workflows/pages.yml`), not from a branch, because the same site also carries the
+  F-Droid repository — a branch-based deployment would delete it. Screenshots in `docs/img/` are
+  real device captures; retake them rather than editing them if the UI changes.
+- **The version lives in `version.properties`, not in a git tag.** F-Droid builds a plain checkout
+  of the tagged commit with no Gradle properties, so the file has to be right in the commit. The
+  release workflow fails a tag that disagrees with it.
+- **Never commit key material.** `*.jks`, `*.p12`, `*.keystore` are gitignored; the app signing
+  key and the F-Droid index key live in CI secrets and can never be rotated without breaking
+  every installed copy. See [`docs/fdroid.md`](docs/fdroid.md).
+- **User-facing release text belongs in `fastlane/metadata/android/en-US/` only.** F-Droid reads
+  that layout directly and the release workflow copies it into the repository index; a second
+  copy in `metadata/*.yml` would drift.
+- **Do not add a dependency that is not on Maven Central under an OSI licence.** F-Droid builds
+  from source with no proprietary blobs, and one Play-services transitive would disqualify the app
+  from the official catalogue.
 - Keep `docs/` in sync when changing architecture, the action/reducer set, the audio pipeline, the
   wire protocol or DI wiring. `../ptt-server/docs/protocol.md` is the canonical protocol spec —
   change it first.
@@ -69,8 +98,10 @@ Kotlin here.
 
 ## Before "fixing" something that looks broken
 
-[`docs/known-issues.md`](docs/known-issues.md) lists 31 defects already fixed (with the mechanism
+[`docs/known-issues.md`](docs/known-issues.md) lists 33 defects already fixed (with the mechanism
 that replaced each), what remains open, and the non-obvious platform gotchas: cleartext being
-blocked for `ws://`, microphone foreground services not being startable from the background,
-`WindowManager` needing the main thread, the widget being unable to do hold-to-talk, and emulator
-microphones capturing silence.
+blocked for `ws://`, a pinned trust manager needing to advertise no issuers, a masked field still
+reporting its raw value to the accessibility tree, HTTP stripping whitespace from header values,
+microphone foreground services not being startable from the background, `WindowManager` needing
+the main thread, the widget being unable to do hold-to-talk, and emulator microphones capturing
+silence.

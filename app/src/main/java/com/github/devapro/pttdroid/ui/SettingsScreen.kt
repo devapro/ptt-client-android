@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -28,6 +29,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -38,13 +40,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.github.devapro.pttdroid.R
 import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.CertificatePin
 import com.github.devapro.pttdroid.data.settings.ThemeMode
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
 
@@ -76,6 +82,12 @@ fun SettingsScreen(
     var floating by remember(settings) { mutableStateOf(settings.floatingButtonEnabled) }
     var hostServer by remember(settings) { mutableStateOf(settings.hostServerEnabled) }
     var theme by remember(settings) { mutableStateOf(settings.themeMode) }
+    var useTls by remember(settings) { mutableStateOf(settings.useTls) }
+    var fingerprint by remember(settings) {
+        mutableStateOf(CertificatePin.format(settings.certificateSha256))
+    }
+    var token by remember(settings) { mutableStateOf(settings.accessToken) }
+    var tokenVisible by remember { mutableStateOf(false) }
 
     val portValue = port.toIntOrNull()
     val channelValue = channel.toIntOrNull()
@@ -84,7 +96,10 @@ fun SettingsScreen(
     val portError = portValue == null || portValue !in AppSettings.PORT_RANGE
     val channelError = channelValue == null || channelValue !in AppSettings.CHANNEL_RANGE
     val nameError = name.length > AppSettings.MAX_NAME_LENGTH
-    val hasError = hostError || portError || channelError || nameError
+    val fingerprintError = useTls && !CertificatePin.isAcceptable(fingerprint)
+    val tokenError = token.length > AppSettings.MAX_TOKEN_LENGTH
+    val hasError = hostError || portError || channelError || nameError ||
+        fingerprintError || tokenError
 
     val edited = settings.copy(
         serverHost = host.trim(),
@@ -94,6 +109,9 @@ fun SettingsScreen(
         floatingButtonEnabled = floating,
         hostServerEnabled = hostServer,
         themeMode = theme,
+        useTls = useTls,
+        certificateSha256 = CertificatePin.normalize(fingerprint),
+        accessToken = token.trim(),
     )
 
     Scaffold(
@@ -186,15 +204,97 @@ fun SettingsScreen(
 
                 if (!hasError) {
                     Text(
-                        text = stringResource(
-                            R.string.settings_endpoint,
-                            "ws://${edited.serverHost}:${edited.serverPort}" +
-                                "/channel/${edited.channel}",
-                        ),
+                        text = stringResource(R.string.settings_endpoint, edited.displayUrl()),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+
+            SectionCard(
+                title = stringResource(R.string.settings_security),
+                caption = stringResource(R.string.settings_security_caption),
+            ) {
+                ToggleRow(
+                    title = stringResource(R.string.settings_tls),
+                    summary = stringResource(R.string.settings_tls_summary),
+                    checked = useTls,
+                    onCheckedChange = { useTls = it },
+                )
+
+                if (useTls) {
+                    OutlinedTextField(
+                        value = fingerprint,
+                        onValueChange = { fingerprint = it },
+                        label = { Text(stringResource(R.string.settings_fingerprint)) },
+                        isError = fingerprintError,
+                        supportingText = {
+                            Text(
+                                stringResource(
+                                    if (fingerprintError) {
+                                        R.string.error_fingerprint_invalid
+                                    } else {
+                                        R.string.settings_fingerprint_summary
+                                    },
+                                ),
+                            )
+                        },
+                        singleLine = false,
+                        maxLines = 3,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Ascii,
+                            imeAction = ImeAction.Next,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                if (useTls && hostServer) {
+                    // The on-device relay speaks plaintext only, so this pair can never connect.
+                    Text(
+                        text = stringResource(R.string.settings_tls_host_conflict),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = { token = it },
+                    label = { Text(stringResource(R.string.settings_token)) },
+                    isError = tokenError,
+                    supportingText = {
+                        Text(
+                            stringResource(
+                                if (tokenError) {
+                                    R.string.error_token_too_long
+                                } else {
+                                    R.string.settings_token_summary
+                                },
+                            ),
+                        )
+                    },
+                    singleLine = true,
+                    visualTransformation = if (tokenVisible) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    trailingIcon = {
+                        TextButton(onClick = { tokenVisible = !tokenVisible }) {
+                            Text(
+                                stringResource(
+                                    if (tokenVisible) R.string.settings_hide else R.string.settings_show,
+                                ),
+                            )
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Next,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             SectionCard(
@@ -337,8 +437,18 @@ private fun ToggleRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    // The whole row toggles, not just the switch. A 32dp switch at the far edge of a tablet is
+    // a needlessly small target, and it leaves the label — the part that says what the setting
+    // does — inert to both touch and a screen reader.
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            )
+            .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -350,7 +460,8 @@ private fun ToggleRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        // Null: the row above owns the click, so the switch must not add a second target.
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 

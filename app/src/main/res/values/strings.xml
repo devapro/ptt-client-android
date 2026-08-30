@@ -59,6 +59,20 @@
     <string name="settings_host">Host</string>
     <string name="settings_port">Port</string>
     <string name="settings_endpoint">Will connect to %1$s</string>
+    <!-- Security. The relay is self-hosted, so both of these are things the operator has to
+         hand out: a fingerprint for a self-signed certificate, and a shared token. -->
+    <string name="settings_security">Security</string>
+    <string name="settings_security_caption">Set these to match the relay. The server prints both when it starts.</string>
+    <string name="settings_tls">Encrypted connection</string>
+    <string name="settings_tls_summary">Connect with wss:// instead of ws://</string>
+    <string name="settings_fingerprint">Certificate fingerprint (SHA-256)</string>
+    <string name="settings_fingerprint_summary">Leave empty if the relay has a publicly trusted certificate, such as through a tunnel. For a self-signed relay, paste the fingerprint from the server log.</string>
+    <string name="settings_tls_host_conflict">This device\'s own relay serves plaintext only. Turn off encryption, or point at a relay that has a certificate.</string>
+    <string name="settings_token">Access token</string>
+    <string name="settings_token_summary">Only needed if the relay was started with one.</string>
+    <string name="settings_show">Show</string>
+    <string name="settings_hide">Hide</string>
+
     <string name="settings_identity">Identity</string>
     <string name="settings_identity_caption">Shown to everyone on the channel while you hold the floor.</string>
     <string name="settings_display_name">Display name</string>
@@ -82,6 +96,8 @@
     <string name="error_port_invalid">Port must be between 1 and 65535</string>
     <string name="error_channel_invalid">Channel must be between 1 and 99</string>
     <string name="error_name_too_long">Name must be at most 32 characters</string>
+    <string name="error_fingerprint_invalid">A SHA-256 fingerprint is 64 hex characters, with or without colons</string>
+    <string name="error_token_too_long">Token must be at most 128 characters</string>
 
     <!-- Permissions -->
     <string name="permission_mic_required">Microphone access is required to talk</string>

@@ -135,10 +135,10 @@ class PttController(
             _state.update {
                 it.copy(status = ConnectionStatus.Connecting, channel = settings.channel)
             }
-            Timber.i("Connecting to %s:%d channel %d", settings.serverHost, settings.serverPort, settings.channel)
+            Timber.i("Connecting to %s channel %d", settings.displayUrl(), settings.channel)
 
             // Suspends until the socket closes, then falls through to backoff.
-            connection.connect(settings.webSocketUrl())
+            connection.connect(settings.endpoint())
 
             if (!scope.isActive) return
             val delayMs = reconnectPolicy.nextDelayMs()

@@ -1,0 +1,39 @@
+# F-Droid recipe.
+#
+# Two jobs, one file:
+#   * the self-hosted repository CI publishes to GitHub Pages copies this in, so the index
+#     carries a licence, categories and a suggested version instead of F-Droid's empty stub;
+#   * submitting to the official catalogue means opening a merge request against
+#     https://gitlab.com/fdroid/fdroiddata with this file at metadata/com.github.devapro.pttdroid.yml
+#
+# The user-facing text is NOT here on purpose. Title, summary, description, changelogs and
+# screenshots live under fastlane/metadata/android/en-US/, which is the layout both F-Droid and
+# the Play publishing tools read, so there is one copy rather than two that drift.
+
+Categories:
+  - Connectivity
+License: GPL-3.0-only
+AuthorName: devapro
+SourceCode: https://github.com/devapro/ptt-client-android
+IssueTracker: https://github.com/devapro/ptt-client-android/issues
+WebSite: https://devapro.github.io/ptt-client-android/
+Changelog: https://github.com/devapro/ptt-client-android/releases
+
+RepoType: git
+Repo: https://github.com/devapro/ptt-client-android.git
+
+Builds:
+  - versionName: 1.0.0
+    versionCode: 10000
+    commit: v1.0.0
+    subdir: app
+    gradle:
+      - yes
+
+# The version comes from version.properties in the tagged commit, so a plain checkout — which is
+# what F-Droid's buildserver does — produces exactly the versionName and versionCode above with
+# no Gradle properties passed in.
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v[0-9]+\.[0-9]+\.[0-9]+$
+CurrentVersion: 1.0.0
+CurrentVersionCode: 10000
