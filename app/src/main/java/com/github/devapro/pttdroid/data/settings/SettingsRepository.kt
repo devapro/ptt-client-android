@@ -22,15 +22,18 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
 class SettingsRepository(private val context: Context) {
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
+        val storedHost = prefs[KEY_HOST]
+        val storedPort = prefs[KEY_PORT]
         AppSettings(
-            serverHost = prefs[KEY_HOST] ?: AppSettings.DEFAULT_HOST,
-            serverPort = prefs[KEY_PORT] ?: AppSettings.DEFAULT_PORT,
+            serverMode = ServerMode.restore(prefs[KEY_SERVER_MODE], storedHost, storedPort),
+            customHost = storedHost ?: AppSettings.DEFAULT_HOST,
+            customPort = storedPort ?: AppSettings.DEFAULT_PORT,
             channel = AppSettings.clampChannel(prefs[KEY_CHANNEL] ?: AppSettings.DEFAULT_CHANNEL),
             displayName = prefs[KEY_NAME] ?: AppSettings.DEFAULT_NAME,
             floatingButtonEnabled = prefs[KEY_FLOATING] ?: false,
             themeMode = ThemeMode.fromStorage(prefs[KEY_THEME]),
             hostServerEnabled = prefs[KEY_HOST_SERVER] ?: false,
-            useTls = prefs[KEY_USE_TLS] ?: false,
+            useTls = prefs[KEY_USE_TLS] ?: AppSettings.DEFAULT_TLS,
             certificateSha256 = prefs[KEY_CERT_SHA256].orEmpty(),
             accessToken = prefs[KEY_ACCESS_TOKEN].orEmpty(),
             floatingButtonX = prefs[KEY_FLOATING_X] ?: 0,
@@ -47,8 +50,10 @@ class SettingsRepository(private val context: Context) {
      * updates it as the user drags.
      */
     suspend fun save(settings: AppSettings) = edit { prefs ->
-        prefs[KEY_HOST] = settings.serverHost.trim()
-        prefs[KEY_PORT] = settings.serverPort.coerceIn(AppSettings.PORT_RANGE)
+        prefs[KEY_SERVER_MODE] = settings.serverMode.name
+        // The custom address is written in both modes: it is what Custom comes back to.
+        prefs[KEY_HOST] = settings.customHost.trim()
+        prefs[KEY_PORT] = settings.customPort.coerceIn(AppSettings.PORT_RANGE)
         prefs[KEY_CHANNEL] = AppSettings.clampChannel(settings.channel)
         prefs[KEY_NAME] = settings.displayName.trim().take(AppSettings.MAX_NAME_LENGTH)
             .ifEmpty { AppSettings.DEFAULT_NAME }
@@ -60,11 +65,6 @@ class SettingsRepository(private val context: Context) {
         // fingerprint happened to be pasted.
         prefs[KEY_CERT_SHA256] = CertificatePin.normalize(settings.certificateSha256)
         prefs[KEY_ACCESS_TOKEN] = settings.accessToken.trim().take(AppSettings.MAX_TOKEN_LENGTH)
-    }
-
-    suspend fun setServer(host: String, port: Int) = edit { prefs ->
-        prefs[KEY_HOST] = host.trim()
-        prefs[KEY_PORT] = port.coerceIn(AppSettings.PORT_RANGE)
     }
 
     suspend fun setChannel(channel: Int) = edit { prefs ->
@@ -94,6 +94,7 @@ class SettingsRepository(private val context: Context) {
     }
 
     private companion object {
+        val KEY_SERVER_MODE = stringPreferencesKey("server_mode")
         val KEY_HOST = stringPreferencesKey("server_host")
         val KEY_PORT = intPreferencesKey("server_port")
         val KEY_CHANNEL = intPreferencesKey("channel")

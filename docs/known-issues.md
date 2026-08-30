@@ -17,7 +17,7 @@
 | 11 | `UtilPermission.resultListeners` was never cleared and retained the Activity; legacy `onRequestPermissionsResult` | Activity Result API; both permission classes deleted |
 | 12 | Channel could go to 0 and negative | Clamped to 1..99 in the UI, the reducer and the settings layer |
 | 13 | `Theme.kt` set the deprecated `window.statusBarColor`, a no-op under targetSdk 36's enforced edge-to-edge | `enableEdgeToEdge()` + `safeDrawingPadding()` |
-| 14 | Two AGP template stub tests, no CI | 103 unit + 32 UI tests, and three workflows: CI, tagged releases, and Pages |
+| 14 | Two AGP template stub tests, no CI | 128 unit + 39 UI tests, and three workflows: CI, tagged releases, and Pages |
 | 15 | Deprecated `android.preference.PreferenceManager` | DataStore (`data/settings/`) |
 | 16 | Dead code: `PTTWebSocketListener`, unused permission constants, unused Ktor dependency | Removed; Ktor is now the actual client |
 | 17 | Hardcoded `ws://192.168.100.4:8000` | User-configurable host/port in Settings |
@@ -49,10 +49,14 @@
   managing a keystore on a handset is a lot for what it buys.
 - **No audio compression.** Raw 16 kHz mono PCM is ~32 kB/s. Fine on a LAN, wasteful over the
   internet — Opus would be the natural next step, and would need a protocol version bump.
-- **No public test server.** Deliberately out of scope; the server repo ships a `Dockerfile`,
-  three compose files and `deploy/deploy.sh` so a deployment is one command.
+- **No public test server**, which is what makes **Relay → Default** thin in *this* build: the
+  address it ships with is `ws://10.0.2.2:8000`, the emulator's route to the development machine,
+  so on a real handset Default reaches nothing until there is somewhere to point it. That address
+  is a build setting (`relay.properties`), not a constant, so a fork with a relay ships a working
+  Default; there just is not one to put here. Deliberately out of scope — the server repo ships a
+  `Dockerfile`, three compose files and `deploy/deploy.sh` so a deployment is one command.
 - **The service, the overlay and the widget have no automated tests.** The button, the main screen
-  and settings do (32 Compose UI tests); the three background surfaces are still verified by hand,
+  and settings do (39 Compose UI tests); the three background surfaces are still verified by hand,
   because each needs a real service, a `WindowManager` window, or a host launcher.
 - **Legacy launcher rasters are generated, not designed.** `mipmap-*/ic_launcher.png` (API 24–25
   only) is rendered by a script, since no image tooling is available here; API 26+ uses the

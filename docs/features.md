@@ -36,8 +36,13 @@ Grouped into cards behind the gear icon, with **Save and reconnect** pinned to a
 stays reachable with the keyboard up. Saving is one atomic write, then a reconnect, confirmed with
 a snackbar.
 
-- **Relay** — host and port (validated; port 1..65535), with a live preview of the exact `ws://…`
-  URL it will dial.
+- **Relay** — **Default** or **Custom**. Default dials the address the app ships with and shows
+  no field at all; most people never have a reason to change it, and it used to be two boxes at
+  the top of the form. Custom reveals one address box that takes whatever is on the clipboard: a
+  bare host, a `host:port`, or a whole URL pasted from the server log or a tunnel — a scheme that
+  is spelled out sets the port (443 for `https://`) and turns encryption on. Either mode shows a
+  live preview of the exact `ws://…` URL it will dial, which is what makes inferring a port from a
+  pasted scheme safe: the inference is on screen before it can be saved.
 - **Identity** — display name, up to 32 characters, shown to peers as the floor holder.
 - **Channel** — 1..99.
 - **Appearance** — System / Light / Dark. The app follows the system by default, but a radio gets
@@ -106,8 +111,8 @@ a throw there takes the overlay window with it.
 
 With **Host a relay on this device** enabled, the app runs the same protocol-v1 relay internally
 (`internalserver/InternalPttServer.kt`), including per-channel isolation and floor control. Other
-phones on the same Wi-Fi point their server host at this device's LAN address; this device points
-its own host setting at `127.0.0.1`. No separate server needed.
+phones on the same Wi-Fi set **Relay → Custom** to this device's LAN address; this device sets its
+own to `127.0.0.1`. No separate server needed.
 
 ## Not included
 

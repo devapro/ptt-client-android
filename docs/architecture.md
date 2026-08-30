@@ -38,7 +38,7 @@ down a transmission in flight.
 | `overlay/` | `OverlayController`, `OverlayBubbleView` |
 | `widget/` | `PttWidget`, `PttWidgetAction`, `PttWidgetReceiver`, `PttWidgetUpdater` |
 | `internalserver/` | `InternalPttServer` — optional on-device relay |
-| `data/settings/` | `AppSettings`, `ThemeMode`, `CertificatePin`, `SettingsRepository` (DataStore) |
+| `data/settings/` | `AppSettings`, `ServerMode`, `ServerAddress`, `ThemeMode`, `CertificatePin`, `SettingsRepository` (DataStore) |
 | `mvi/` | `ActionProcessor`, `Reducer`, `MviViewModel` |
 | `model/` | `MainAction`, `ScreenState`, `MainEvent` |
 | `reducer/` | one reducer per action (10) |
@@ -117,6 +117,34 @@ Application-scoped singletons: `SettingsRepository`, `PttSessionLauncher`, `Voic
 `OverlayController`, `InternalPttServer`, plus a named `sessionScope`
 (`SupervisorJob + Dispatchers.IO`) that outlives every Activity. Reducers are factories; the
 ViewModel uses `viewModelOf`.
+
+## The relay address
+
+`AppSettings` keeps two pairs and they are not the same thing. `customHost`/`customPort` are what
+the user typed; `serverHost`/`serverPort` are computed from `serverMode` and are what the transport
+dials. Everything downstream — `webSocketUrl()`, the offline card, the embedded relay's port —
+reads the computed pair and never has to know which mode is in force, and the typed pair survives a
+spell on Default so that switching back does not lose it.
+
+`ServerAddress.parse` turns one line of text into that pair. It takes a bare host, a `host:port`,
+or a whole URL, because that is what people have on the clipboard: `ptt-server` prints
+`ws://192.168.1.20:8000` at startup and a tunnel hands out `https://something.ngrok-free.app`. A
+scheme that is spelled out keeps its own default port — 443 for `https`, 80 for `http`, and only a
+bare host with no scheme gets this app's 8000 — and it decides encryption, so the Security switch
+shows what the address implies rather than contradicting it. Flipping that switch first resolves
+the address to `host:port`, which is what stops turning encryption off from silently taking 443
+with it. Credentials in the address are refused rather than accepted: a URL reaches every proxy log
+on the way, which is exactly why the token is a header.
+
+The Default address is not a constant either: `relay.properties` is read at build time into
+`BuildConfig.DEFAULT_RELAY_HOST` / `_PORT` / `_TLS`, which is what `AppSettings.DEFAULT_HOST` and
+friends return. A fork with its own relay changes that one line and ships an APK that arrives
+pointing at it. See [`build-and-run.md`](build-and-run.md#the-default-relay).
+
+`ServerMode.restore` is the one piece with a compatibility duty. An install that predates the
+Default/Custom choice has a stored address and no stored mode; reading that as Default would
+quietly move it back to the built-in address, so a stored address that differs from the default is
+taken as the Custom choice it was made under.
 
 ## Transport security
 

@@ -1,6 +1,8 @@
 package com.github.devapro.pttdroid.data
 
 import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.ServerAddress
+import com.github.devapro.pttdroid.data.settings.ServerMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -8,6 +10,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppSettingsTest {
+
+    private fun custom(host: String, port: Int = AppSettings.DEFAULT_PORT) = AppSettings(
+        serverMode = ServerMode.CUSTOM,
+        customHost = host,
+        customPort = port,
+    )
 
     @Test
     fun `channel is clamped into range`() {
@@ -20,9 +28,7 @@ class AppSettingsTest {
 
     @Test
     fun `websocket url carries channel version and encoded name`() {
-        val url = AppSettings(
-            serverHost = "10.0.2.2",
-            serverPort = 8000,
+        val url = custom("10.0.2.2", 8000).copy(
             channel = 7,
             displayName = "Alice",
         ).webSocketUrl()
@@ -70,21 +76,66 @@ class AppSettingsTest {
 
     @Test
     fun `an ipv4 host and a hostname are both left intact`() {
-        assertTrue(AppSettings(serverHost = "192.168.1.20").webSocketUrl().startsWith("ws://192.168.1.20:"))
-        assertTrue(AppSettings(serverHost = "relay.local").webSocketUrl().startsWith("ws://relay.local:"))
+        assertTrue(custom("192.168.1.20").webSocketUrl().startsWith("ws://192.168.1.20:"))
+        assertTrue(custom("relay.local").webSocketUrl().startsWith("ws://relay.local:"))
     }
 
     @Test
-    fun `default host is the emulator loopback to the host machine`() {
-        // localhost inside an emulator is the emulator itself, not the dev machine.
+    fun `the shipped default relay is the emulator loopback to the host machine`() {
+        // Set by `defaultRelay` in relay.properties, which is what a build actually ships and
+        // what the two-emulator test setup relies on: localhost inside an emulator is the
+        // emulator itself, not the development machine. A fork pointing at its own relay changes
+        // that line and this expectation together.
         assertEquals("10.0.2.2", AppSettings().serverHost)
+        assertEquals(8000, AppSettings().serverPort)
+        assertFalse(AppSettings().useTls)
+    }
+
+    @Test
+    fun `the shipped default is an address the app would also accept as a custom one`() {
+        // The build parses relay.properties strictly and the address box parses what is typed
+        // leniently. They are separate grammars, so this pins that a build cannot ship a default
+        // the app itself would refuse.
+        val parsed = ServerAddress.parse("${AppSettings.DEFAULT_HOST}:${AppSettings.DEFAULT_PORT}")
+
+        assertEquals(
+            ServerAddress.Valid(AppSettings.DEFAULT_HOST, AppSettings.DEFAULT_PORT, null),
+            parsed,
+        )
+    }
+
+    // --- default vs custom relay ------------------------------------------------------------
+
+    @Test
+    fun `the default mode dials the built-in address whatever is stored under custom`() {
+        // Switching to Default must not lose what was typed, and must not dial it either.
+        val settings = AppSettings(customHost = "relay.local", customPort = 9000)
+
+        assertEquals(ServerMode.DEFAULT, settings.serverMode)
+        assertEquals(AppSettings.DEFAULT_HOST, settings.serverHost)
+        assertEquals(AppSettings.DEFAULT_PORT, settings.serverPort)
+        assertEquals("relay.local", settings.customHost)
+    }
+
+    @Test
+    fun `the custom mode dials what was typed`() {
+        val settings = custom("relay.local", 9000)
+
+        assertEquals("relay.local", settings.serverHost)
+        assertEquals(9000, settings.serverPort)
+        assertTrue(settings.webSocketUrl().startsWith("ws://relay.local:9000/"))
+    }
+
+    @Test
+    fun `a custom host is trimmed before it reaches the wire`() {
+        assertEquals("relay.local", custom("  relay.local  ").serverHost)
     }
 
     // --- transport security -----------------------------------------------------------------
 
     @Test
     fun `the scheme follows the encryption toggle`() {
-        val plain = AppSettings(serverHost = "relay.example.com", serverPort = 8000, channel = 3)
+        val plain = custom("relay.example.com", 8000).copy(channel = 3)
 
         assertEquals("ws://relay.example.com:8000/channel/3", plain.displayUrl())
         assertEquals(

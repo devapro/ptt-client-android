@@ -10,7 +10,7 @@
 ```bash
 ./gradlew testDebugUnitTest      # 65 tests
 ./gradlew lintDebug              # must be clean
-./gradlew connectedDebugAndroidTest   # 32 UI tests; ANDROID_SERIAL picks the device
+./gradlew connectedDebugAndroidTest   # 39 UI tests; ANDROID_SERIAL picks the device
 ```
 
 ## Unit tests (103, all passing)
@@ -45,7 +45,7 @@ Run on a device: `ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest`. 
 |---|---|---|
 | `ui/PTTButtonTest` | 7 | The gesture. The microphone request leaves on touch-**down**, not on release; **the release still fires when the button is disabled mid-press** and when the status changes mid-press (known-issues #20 — losing that release strands the talk floor with the microphone open); a dead control ignores touches and offers no click action; the face carries a word, not just a colour; TalkBack gets a toggle action |
 | `ui/MainScreenTest` | 11 | What the screen says and what it dispatches: ready/offline/receiving/pending wording, the offline card showing the address it cannot reach, the missing-permission case offering the fix, channel stepping and its disabled ends, the channel locked while transmitting, error dismissal, connect/disconnect, and the gear |
-| `ui/SettingsScreenTest` | 6 | A blank host or an out-of-range port cannot be saved, a valid form saves what was typed, the exact `ws://` URL is shown, and the theme choice round-trips |
+| `ui/SettingsScreenTest` | 21 | The form's two jobs: making a broken relay address impossible to save, and showing the URL it will actually dial. Default hides the address rather than pre-filling a field; choosing Custom reveals it and switching back keeps what was typed; a blank address, an out-of-range port and credentials in the URL each block Save with their own message; a pasted `https://` tunnel URL brings 443 with it and turns encryption on, and turning encryption back off keeps that port instead of silently dropping to 80. Plus the security fields: the fingerprint box appears only with encryption on, a half-typed fingerprint cannot be saved, an empty one can (a tunnel needs no pin), the token is masked and saved trimmed, and hosting a relay while asking for encryption is called out |
 
 These cover the layer the JVM tests cannot reach: gesture lifecycle, semantics, and the wiring
 from a rendered control to a `MainAction`.

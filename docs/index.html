@@ -245,14 +245,17 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
         <div>
           <h3>Run a relay</h3>
           <p>One container, or one JAR. It keeps each channel's members apart and hands out the
-          talk floor. No database, nothing to back up.</p>
+          talk floor. No database, nothing to back up. There is a
+          <a href="https://github.com/devapro/ptt-server/blob/main/docs/running-your-own.md">walkthrough
+          from a spare machine to two handsets talking</a>, firewall and all.</p>
         </div>
       </div>
       <div class="row">
         <span class="n">02</span>
         <div>
           <h3>Point the phones at it</h3>
-          <p>Host and port are settings, not constants. The app shows the exact
+          <p>Paste the address the server printed, or a tunnel URL, into one box &mdash;
+          the scheme sets the port and the encryption for you. The app shows the exact
           <code>ws://</code> URL it will dial, so a typo is visible before you start wondering
           why nothing works.</p>
         </div>
@@ -413,11 +416,12 @@ adb install -r -g \
     <h2>Nothing is<br>compiled in</h2>
     <div class="cols" style="margin-top:34px">
       <div>
-        <p>Host, port, display name, channel and theme are all settings. An earlier build had a
-        LAN address baked into the socket class, which made it useless on any other network — so
-        the relay address being editable, and visible, is rather the point.</p>
+        <p>The relay address, display name, channel and theme are all settings. An earlier build
+        had a LAN address baked into the socket class, which made it useless on any other network
+        &mdash; so the relay address being editable, and visible, is rather the point.</p>
         <ul class="tight">
-          <li><strong>Relay</strong> — host and port, validated, with a live preview of the URL.</li>
+          <li><strong>Relay</strong> &mdash; Default, or one Custom address box that takes a host,
+          a <code>host:port</code> or a whole pasted URL. Live preview either way.</li>
           <li><strong>Identity</strong> — the name others see while you hold the floor.</li>
           <li><strong>Appearance</strong> — follow the system, or force light or dark.</li>
           <li><strong>Hands-free</strong> — the floating button, and the on-device relay.</li>

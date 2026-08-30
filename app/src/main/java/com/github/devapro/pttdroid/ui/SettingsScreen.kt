@@ -51,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import com.github.devapro.pttdroid.R
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.CertificatePin
+import com.github.devapro.pttdroid.data.settings.ServerAddress
+import com.github.devapro.pttdroid.data.settings.ServerMode
 import com.github.devapro.pttdroid.data.settings.ThemeMode
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
 
@@ -58,9 +60,13 @@ import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
  * Relay address, identity, channel and the two hands-free toggles.
  *
  * The server address being editable at all is the point — it used to be a LAN IP compiled into
- * the socket class. Given that, the screen shows the exact URL it will dial: for a self-hosted
- * relay, "which address is this thing actually using" is the entire first-run debugging story,
- * and it was previously only discoverable from logcat.
+ * the socket class. It is a choice rather than a permanent pair of fields, though: most people
+ * never have a reason to touch it, so Default folds it away and only Custom shows the box.
+ *
+ * Either way the screen shows the exact URL it will dial. For a self-hosted relay, "which address
+ * is this thing actually using" is the entire first-run debugging story, and it was previously
+ * only discoverable from logcat — which is also what makes it safe for the address field to infer
+ * a port from a pasted scheme, since the inference is spelled out before it can be saved.
  *
  * Save sits in a bottom bar rather than at the end of the scroll, so it is reachable with the
  * keyboard up and without hunting for it.
@@ -75,8 +81,10 @@ fun SettingsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var host by remember(settings) { mutableStateOf(settings.serverHost) }
-    var port by remember(settings) { mutableStateOf(settings.serverPort.toString()) }
+    var serverMode by remember(settings) { mutableStateOf(settings.serverMode) }
+    var address by remember(settings) {
+        mutableStateOf("${settings.customHost}:${settings.customPort}")
+    }
     var name by remember(settings) { mutableStateOf(settings.displayName) }
     var channel by remember(settings) { mutableStateOf(settings.channel.toString()) }
     var floating by remember(settings) { mutableStateOf(settings.floatingButtonEnabled) }
@@ -89,27 +97,35 @@ fun SettingsScreen(
     var token by remember(settings) { mutableStateOf(settings.accessToken) }
     var tokenVisible by remember { mutableStateOf(false) }
 
-    val portValue = port.toIntOrNull()
     val channelValue = channel.toIntOrNull()
 
-    val hostError = host.isBlank()
-    val portError = portValue == null || portValue !in AppSettings.PORT_RANGE
+    // Parsed in both modes so that what is in the box survives a save made under Default, but only
+    // shown and enforced under Custom, where it is the thing being dialled.
+    val parsedAddress = ServerAddress.parse(address)
+    val typedAddress = parsedAddress as? ServerAddress.Valid
+    val customAddress = typedAddress.takeIf { serverMode.isCustom }
+    val addressProblem = (parsedAddress as? ServerAddress.Problem).takeIf { serverMode.isCustom }
+
+    // A scheme spelled out in the address decides encryption; with none, the switch below owns it.
+    val secure = customAddress?.secure ?: useTls
+
     val channelError = channelValue == null || channelValue !in AppSettings.CHANNEL_RANGE
     val nameError = name.length > AppSettings.MAX_NAME_LENGTH
-    val fingerprintError = useTls && !CertificatePin.isAcceptable(fingerprint)
+    val fingerprintError = secure && !CertificatePin.isAcceptable(fingerprint)
     val tokenError = token.length > AppSettings.MAX_TOKEN_LENGTH
-    val hasError = hostError || portError || channelError || nameError ||
+    val hasError = addressProblem != null || channelError || nameError ||
         fingerprintError || tokenError
 
     val edited = settings.copy(
-        serverHost = host.trim(),
-        serverPort = portValue ?: settings.serverPort,
+        serverMode = serverMode,
+        customHost = typedAddress?.host ?: settings.customHost,
+        customPort = typedAddress?.port ?: settings.customPort,
         displayName = name.trim().ifEmpty { AppSettings.DEFAULT_NAME },
         channel = channelValue ?: settings.channel,
         floatingButtonEnabled = floating,
         hostServerEnabled = hostServer,
         themeMode = theme,
-        useTls = useTls,
+        useTls = secure,
         certificateSha256 = CertificatePin.normalize(fingerprint),
         accessToken = token.trim(),
     )
@@ -170,37 +186,35 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_server),
                 caption = stringResource(R.string.settings_server_caption),
             ) {
-                OutlinedTextField(
-                    value = host,
-                    onValueChange = { host = it },
-                    label = { Text(stringResource(R.string.settings_host)) },
-                    isError = hostError,
-                    supportingText = {
-                        if (hostError) Text(stringResource(R.string.error_host_blank))
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Uri,
-                        imeAction = ImeAction.Next,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
+                SegmentedChoice(
+                    options = SERVER_MODES,
+                    selected = serverMode,
+                    onSelect = { serverMode = it },
                 )
 
-                OutlinedTextField(
-                    value = port,
-                    onValueChange = { port = it.filter(Char::isDigit).take(5) },
-                    label = { Text(stringResource(R.string.settings_port)) },
-                    isError = portError,
-                    supportingText = {
-                        if (portError) Text(stringResource(R.string.error_port_invalid))
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        imeAction = ImeAction.Next,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (serverMode.isCustom) {
+                    OutlinedTextField(
+                        value = address,
+                        onValueChange = { address = it },
+                        label = { Text(stringResource(R.string.settings_server_url)) },
+                        isError = addressProblem != null,
+                        supportingText = {
+                            Text(stringResource(addressProblem.message()))
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Uri,
+                            imeAction = ImeAction.Next,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    Text(
+                        text = stringResource(R.string.settings_server_default_summary),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
 
                 if (!hasError) {
                     Text(
@@ -218,11 +232,18 @@ fun SettingsScreen(
                 ToggleRow(
                     title = stringResource(R.string.settings_tls),
                     summary = stringResource(R.string.settings_tls_summary),
-                    checked = useTls,
-                    onCheckedChange = { useTls = it },
+                    checked = secure,
+                    onCheckedChange = { wanted ->
+                        // The switch takes the scheme back from the address field. Resolving that
+                        // address to host:port first keeps the port the scheme implied — dropping
+                        // a `https://` would otherwise silently take 443 with it.
+                        customAddress?.takeIf { it.secure != null }
+                            ?.let { address = it.hostAndPort() }
+                        useTls = wanted
+                    },
                 )
 
-                if (useTls) {
+                if (secure) {
                     OutlinedTextField(
                         value = fingerprint,
                         onValueChange = { fingerprint = it },
@@ -249,7 +270,7 @@ fun SettingsScreen(
                     )
                 }
 
-                if (useTls && hostServer) {
+                if (secure && hostServer) {
                     // The on-device relay speaks plaintext only, so this pair can never connect.
                     Text(
                         text = stringResource(R.string.settings_tls_host_conflict),
@@ -332,7 +353,11 @@ fun SettingsScreen(
             }
 
             SectionCard(title = stringResource(R.string.settings_appearance)) {
-                ThemePicker(selected = theme, onSelect = { theme = it })
+                SegmentedChoice(
+                    options = THEME_MODES,
+                    selected = theme,
+                    onSelect = { theme = it },
+                )
             }
 
             SectionCard(title = stringResource(R.string.settings_hands_free)) {
@@ -371,31 +396,47 @@ fun SettingsScreen(
 /** Past this the form stops being a column of fields and becomes a wall of them. */
 private val FORM_MAX_WIDTH = 640.dp
 
+private val SERVER_MODES = listOf(
+    ServerMode.DEFAULT to R.string.settings_server_default,
+    ServerMode.CUSTOM to R.string.settings_server_custom,
+)
+
+private val THEME_MODES = listOf(
+    ThemeMode.SYSTEM to R.string.settings_theme_system,
+    ThemeMode.LIGHT to R.string.settings_theme_light,
+    ThemeMode.DARK to R.string.settings_theme_dark,
+)
+
 /**
- * System / Light / Dark. Three options is exactly the case a segmented control is for — all of
- * them visible, one tap to change, no menu to open and no state hidden behind a label.
+ * A short, closed set of choices — every option visible, one tap to change, nothing hidden behind
+ * a label the way a dropdown hides it. Two or three options is exactly what this control is for.
  */
 @Composable
-private fun ThemePicker(
-    selected: ThemeMode,
-    onSelect: (ThemeMode) -> Unit,
+private fun <T> SegmentedChoice(
+    options: List<Pair<T, Int>>,
+    selected: T,
+    onSelect: (T) -> Unit,
 ) {
-    val options = listOf(
-        ThemeMode.SYSTEM to R.string.settings_theme_system,
-        ThemeMode.LIGHT to R.string.settings_theme_light,
-        ThemeMode.DARK to R.string.settings_theme_dark,
-    )
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        options.forEachIndexed { index, (mode, label) ->
+        options.forEachIndexed { index, (value, label) ->
             SegmentedButton(
-                selected = mode == selected,
-                onClick = { onSelect(mode) },
+                selected = value == selected,
+                onClick = { onSelect(value) },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
             ) {
                 Text(stringResource(label))
             }
         }
     }
+}
+
+/** One message per way the address can be unusable; the format hint when it is fine. */
+private fun ServerAddress.Problem?.message(): Int = when (this) {
+    null -> R.string.settings_server_url_summary
+    ServerAddress.Problem.EMPTY -> R.string.error_host_blank
+    ServerAddress.Problem.CREDENTIALS -> R.string.error_host_credentials
+    ServerAddress.Problem.PORT -> R.string.error_port_invalid
+    ServerAddress.Problem.MALFORMED -> R.string.error_host_invalid
 }
 
 @Composable

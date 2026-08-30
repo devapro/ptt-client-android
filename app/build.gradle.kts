@@ -32,6 +32,41 @@ val appVersionCode: Int = appVersionName.substringBefore('-').split('.')
         parts[0] * 10_000 + parts[1] * 100 + parts[2]
     }
 
+/**
+ * The relay a fresh install dials while **Settings → Relay** is on "Default", from
+ * `relay.properties` at the repository root — read from the checkout for the same reason the
+ * version is, since F-Droid builds with no Gradle properties set.
+ *
+ * Parsed strictly: the scheme and the port must both be written out. The address box in the app
+ * infers a missing port from the scheme because someone is pasting into it on a phone; a build
+ * setting is edited once by whoever packages the app, so inferring anything here would only make
+ * what a build ships less obvious than what is written on the line.
+ */
+val defaultRelay: String = (
+    providers.gradleProperty("pttDefaultRelay").orNull
+        ?: System.getenv("PTT_DEFAULT_RELAY")
+        ?: rootProject.file("relay.properties")
+            .takeIf { it.isFile }
+            ?.let { file ->
+                Properties()
+                    .apply { file.inputStream().use { stream -> load(stream) } }
+                    .getProperty("defaultRelay")
+            }
+    )
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: error("relay.properties is missing or has no defaultRelay")
+
+val defaultRelayParts = Regex("""^(ws|wss)://([A-Za-z0-9._-]+|\[[0-9A-Fa-f:.]+]):([0-9]{1,5})$""")
+    .matchEntire(defaultRelay)
+    ?: error("defaultRelay: '$defaultRelay' is not scheme://host:port, e.g. ws://10.0.2.2:8000")
+
+val defaultRelayHost: String = defaultRelayParts.groupValues[2]
+val defaultRelayPort: Int = defaultRelayParts.groupValues[3].toInt().also {
+    require(it in 1..65_535) { "defaultRelay: port $it is outside 1..65535" }
+}
+val defaultRelayTls: Boolean = defaultRelayParts.groupValues[1] == "wss"
+
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
@@ -49,6 +84,10 @@ android {
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName
+
+        buildConfigField("String", "DEFAULT_RELAY_HOST", "\"$defaultRelayHost\"")
+        buildConfigField("int", "DEFAULT_RELAY_PORT", "$defaultRelayPort")
+        buildConfigField("boolean", "DEFAULT_RELAY_TLS", "$defaultRelayTls")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

@@ -56,8 +56,11 @@
     <!-- Settings screen -->
     <string name="settings_server">Relay</string>
     <string name="settings_server_caption">The machine running ptt-server, or this phone if it is hosting.</string>
-    <string name="settings_host">Host</string>
-    <string name="settings_port">Port</string>
+    <string name="settings_server_default">Default</string>
+    <string name="settings_server_custom">Custom</string>
+    <string name="settings_server_default_summary">Connects to the address the app ships with. Choose Custom to point at your own relay.</string>
+    <string name="settings_server_url">Server address</string>
+    <string name="settings_server_url_summary">A host, a host:port, or a whole URL pasted from the server log or a tunnel.</string>
     <string name="settings_endpoint">Will connect to %1$s</string>
     <!-- Security. The relay is self-hosted, so both of these are things the operator has to
          hand out: a fingerprint for a self-signed certificate, and a shared token. -->
@@ -92,7 +95,9 @@
     <string name="settings_saved">Settings saved</string>
 
     <!-- Validation -->
-    <string name="error_host_blank">Host must not be empty</string>
+    <string name="error_host_blank">Enter the relay\'s address</string>
+    <string name="error_host_invalid">Not an address. Try something like relay.local:8000</string>
+    <string name="error_host_credentials">Take the username out of the address — use the access token below instead</string>
     <string name="error_port_invalid">Port must be between 1 and 65535</string>
     <string name="error_channel_invalid">Channel must be between 1 and 99</string>
     <string name="error_name_too_long">Name must be at most 32 characters</string>

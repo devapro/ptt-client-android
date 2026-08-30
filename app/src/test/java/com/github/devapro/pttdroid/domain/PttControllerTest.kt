@@ -103,8 +103,9 @@ class PttControllerTest {
         val (controller, connection, _) = harness(
             this,
             com.github.devapro.pttdroid.data.settings.AppSettings(
-                serverHost = "relay.example.com",
-                serverPort = 8443,
+                serverMode = com.github.devapro.pttdroid.data.settings.ServerMode.CUSTOM,
+                customHost = "relay.example.com",
+                customPort = 8443,
                 channel = 4,
                 useTls = true,
                 certificateSha256 = pin,

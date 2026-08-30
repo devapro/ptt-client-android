@@ -47,12 +47,21 @@ to submit to the official F-Droid catalogue: [`docs/fdroid.md`](docs/fdroid.md).
 adb install -r -g app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Then open **Settings** and point **Relay** at your server. On an emulator, a server running on your
-development machine is at **`10.0.2.2`** — inside an emulator, `localhost` is the emulator itself.
-The screen shows the exact URL it will dial, which is usually enough to spot a typo.
+Then open **Settings → Relay**. **Default** dials the address the build ships with — for this
+repository that is `ws://10.0.2.2:8000`, the emulator's route to your development machine, since
+`localhost` inside an emulator is the emulator itself. **Custom** takes one address: a host, a
+`host:port`, or a whole URL pasted from the server log or a tunnel. Either way the screen shows
+the exact URL it will dial, which is usually enough to spot a typo.
 
-No server? Turn on **Host a relay on this device**, point that phone's host at `127.0.0.1`, and
-point the other phones at its LAN address.
+Don't have a relay yet? Two ways out:
+
+- **Run one** — start to finish, from a spare machine to two phones talking:
+  [`ptt-server/docs/running-your-own.md`](https://github.com/devapro/ptt-server/blob/main/docs/running-your-own.md).
+- **Host one on a phone** — turn on **Host a relay on this device**, set that phone's **Relay** to
+  Custom `127.0.0.1`, and point the other phones at its LAN address.
+
+Building for a group that already has a relay? Set it once in `relay.properties` and the APK
+arrives already pointing at it — [`docs/build-and-run.md`](docs/build-and-run.md#the-default-relay).
 
 ### Reaching a relay that is not on your Wi-Fi
 
@@ -102,8 +111,8 @@ on the floating bubble and another on the big button.
 ## Tests
 
 ```bash
-./gradlew testDebugUnitTest                                  # 103 JVM tests
-ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest   # 32 Compose UI tests
+./gradlew testDebugUnitTest                                  # 128 JVM tests
+ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest   # 39 Compose UI tests
 ./gradlew lintDebug                                          # 12 pre-existing findings, no more
 ```
 

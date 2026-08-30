@@ -59,13 +59,48 @@ curl -s https://dl.google.com/dl/android/maven2/<group/path>/<artifact>/<ver>/<a
   | unzip -p - META-INF/com/android/build/gradle/aar-metadata.properties | grep minCompileSdk
 ```
 
+## The default relay
+
+**Settings → Relay → Default** dials whatever `relay.properties` said at build time:
+
+```properties
+defaultRelay=ws://10.0.2.2:8000
+```
+
+It is read into `BuildConfig.DEFAULT_RELAY_HOST` / `_PORT` / `_TLS` and reaches the app through
+`AppSettings.DEFAULT_HOST` / `DEFAULT_PORT` / `DEFAULT_TLS`. `wss://` also leaves a fresh install
+with **Encrypted connection** already on.
+
+Both the scheme and the port must be written out — the build infers nothing, so what a build ships
+is exactly what is on that line, and a malformed value fails configuration rather than silently
+falling back:
+
+```
+defaultRelay: 'relay.example.com' is not scheme://host:port, e.g. ws://10.0.2.2:8000
+```
+
+Override it for a one-off build without editing the file:
+
+```bash
+./gradlew assembleRelease -PpttDefaultRelay=wss://relay.example.com:8443
+PTT_DEFAULT_RELAY=wss://relay.example.com:8443 ./gradlew assembleRelease
+```
+
+The file is tracked for the same reason `version.properties` is: F-Droid builds a plain checkout
+with no Gradle properties set, so a value that only exists in CI would build as something else.
+
+What this repository ships — `ws://10.0.2.2:8000` — is the emulator's route to the machine running
+it, which is right for development and reaches nothing on a real handset. A group running its own
+relay changes that one line and ships an APK that arrives already pointing at it.
+
 ## Networking: reaching the server
 
 **An emulator reaches a server on your development machine at `10.0.2.2`, never `localhost`** —
 inside the emulator, `localhost` is the emulator itself. `10.0.2.2` is the app's default host.
 
-On a physical device, use the machine's LAN address (e.g. `192.168.1.20`) and make sure the port is
-allowed through the firewall.
+On a physical device, set **Settings → Relay → Custom** to the machine's LAN address (e.g.
+`192.168.1.20:8000`) and make sure the port is allowed through the firewall. The address box takes
+a whole URL, so what `ptt-server` prints at startup can be pasted straight in.
 
 The transport is plain `ws://`, which Android blocks by default. `res/xml/network_security_config.xml`
 permits cleartext and is referenced from the manifest. Without it every connection fails with
@@ -74,14 +109,17 @@ permits cleartext and is referenced from the manifest. Without it every connecti
 
 ## Running the server
 
-Either start the standalone relay from the sibling repo:
+Setting one up for real, rather than for a build-and-test loop:
+[`../../ptt-server/docs/running-your-own.md`](../../ptt-server/docs/running-your-own.md).
+
+For development, either start the standalone relay from the sibling repo:
 
 ```bash
 cd ../ptt-server && ./gradlew run          # listens on 0.0.0.0:8000
 curl -s localhost:8000/health
 ```
 
-…or enable **Host a relay on this device** in the app's Settings and point the host field at
+…or enable **Host a relay on this device** in the app's Settings and set **Relay → Custom** to
 `127.0.0.1`.
 
 ## Two-emulator setup
@@ -91,6 +129,6 @@ $ANDROID_HOME/emulator/emulator -list-avds
 adb devices -l
 ```
 
-Install on both, set both to the same channel and host `10.0.2.2`, then hold PTT on one and watch
-the other. Put them on different channels to confirm they are isolated. Details in
-[`testing.md`](testing.md).
+Install on both, set both to the same channel and leave the relay on **Default** (`10.0.2.2`), then
+hold PTT on one and watch the other. Put them on different channels to confirm they are isolated.
+Details in [`testing.md`](testing.md).

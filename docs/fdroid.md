@@ -14,6 +14,7 @@ Both read the same metadata, so nothing is written twice.
 | Path | Purpose |
 |---|---|
 | `version.properties` | The version. One line, and it is the source of truth |
+| `relay.properties` | The relay **Settings → Relay → Default** dials. One line, read into `BuildConfig` at build time, so a fork ships an APK already pointing at its own relay |
 | `metadata/com.github.devapro.pttdroid.yml` | The recipe: licence, categories, links, build entry |
 | `fastlane/metadata/android/en-US/` | Everything a user reads — title, summary, description, changelogs, screenshots |
 | `.github/workflows/release.yml` | Tag → signed APK → GitHub release → F-Droid repo → site |

@@ -13,6 +13,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.github.devapro.pttdroid.R
 import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.ServerMode
 import com.github.devapro.pttdroid.data.settings.ThemeMode
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
 import org.junit.Assert.assertEquals
@@ -49,9 +50,22 @@ class SettingsScreenTest {
 
     private fun string(id: Int) = context.getString(id)
 
+    private fun custom(host: String, port: Int = AppSettings.DEFAULT_PORT) = AppSettings(
+        serverMode = ServerMode.CUSTOM,
+        customHost = host,
+        customPort = port,
+    )
+
+    /** Replaces the address field's contents, the way pasting over a selection would. */
+    private fun typeAddress(text: String) {
+        rule.onNodeWithText(string(R.string.settings_server_url)).performScrollTo()
+            .performTextClearance()
+        rule.onNodeWithText(string(R.string.settings_server_url)).performTextInput(text)
+    }
+
     @Test
     fun the_exact_url_it_will_dial_is_shown() {
-        show(AppSettings(serverHost = "10.0.2.2", serverPort = 8000, channel = 3))
+        show(AppSettings(channel = 3))
 
         rule.onNodeWithText(
             string(R.string.settings_endpoint).format("ws://10.0.2.2:8000/channel/3"),
@@ -59,10 +73,35 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun a_blank_host_cannot_be_saved() {
+    fun the_default_relay_is_a_choice_rather_than_a_field_to_fill_in() {
         show()
 
-        rule.onNodeWithText("10.0.2.2").performTextClearance()
+        rule.onNodeWithText(string(R.string.settings_server_url)).assertDoesNotExist()
+        rule.onNodeWithText(string(R.string.settings_server_default_summary)).assertIsDisplayed()
+    }
+
+    @Test
+    fun the_address_field_appears_only_once_custom_is_chosen() {
+        show()
+
+        rule.onNodeWithText(string(R.string.settings_server_custom)).performClick()
+
+        rule.onNodeWithText(string(R.string.settings_server_url)).assertIsDisplayed()
+        rule.onNodeWithText(string(R.string.settings_server_default_summary)).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_stored_custom_address_comes_back_as_host_and_port() {
+        show(custom("relay.local", 9000))
+
+        rule.onNodeWithText("relay.local:9000").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_blank_address_cannot_be_saved() {
+        show(custom("relay.local"))
+
+        rule.onNodeWithText(string(R.string.settings_server_url)).performTextClearance()
 
         rule.onNodeWithText(string(R.string.error_host_blank)).assertIsDisplayed()
         rule.onNodeWithText(string(R.string.settings_save)).assertIsNotEnabled()
@@ -70,10 +109,9 @@ class SettingsScreenTest {
 
     @Test
     fun a_port_outside_the_legal_range_cannot_be_saved() {
-        show()
+        show(custom("relay.local"))
 
-        rule.onNodeWithText("8000").performTextClearance()
-        rule.onNodeWithText(string(R.string.settings_port)).performTextInput("70000")
+        typeAddress("relay.local:70000")
 
         rule.onNodeWithText(string(R.string.error_port_invalid)).assertIsDisplayed()
         rule.onNodeWithText(string(R.string.settings_save)).assertIsNotEnabled()
@@ -81,16 +119,79 @@ class SettingsScreenTest {
 
     @Test
     fun a_valid_form_saves_what_was_typed() {
-        show()
+        show(custom("relay.local"))
 
-        rule.onNodeWithText("10.0.2.2").performTextClearance()
-        rule.onNodeWithText(string(R.string.settings_host)).performTextInput("relay.local")
+        typeAddress("relay.example.com:9000")
         rule.onNodeWithText(string(R.string.settings_save)).assertIsEnabled().performClick()
 
         rule.runOnIdle {
             assertEquals(1, saved.size)
-            assertEquals("relay.local", saved.first().serverHost)
+            assertEquals("relay.example.com", saved.first().serverHost)
+            assertEquals(9000, saved.first().serverPort)
         }
+    }
+
+    @Test
+    fun switching_to_default_keeps_the_custom_address_for_later() {
+        show(custom("relay.local", 9000))
+
+        rule.onNodeWithText(string(R.string.settings_server_default)).performClick()
+        rule.onNodeWithText(string(R.string.settings_save)).performClick()
+
+        rule.runOnIdle {
+            val settings = saved.first()
+            assertEquals(AppSettings.DEFAULT_HOST, settings.serverHost)
+            assertEquals("relay.local", settings.customHost)
+            assertEquals(9000, settings.customPort)
+        }
+    }
+
+    @Test
+    fun a_pasted_tunnel_url_brings_its_port_and_turns_encryption_on() {
+        show(custom("relay.local"))
+
+        typeAddress("https://something.ngrok-free.app")
+
+        rule.onNodeWithText(
+            string(R.string.settings_endpoint)
+                .format("wss://something.ngrok-free.app:443/channel/1"),
+        ).assertIsDisplayed()
+
+        rule.onNodeWithText(string(R.string.settings_save)).performClick()
+
+        rule.runOnIdle {
+            val settings = saved.first()
+            assertEquals("something.ngrok-free.app", settings.serverHost)
+            assertEquals(443, settings.serverPort)
+            assertEquals(true, settings.useTls)
+        }
+    }
+
+    @Test
+    fun turning_encryption_off_after_a_pasted_url_keeps_the_port_it_implied() {
+        show(custom("relay.local"))
+
+        typeAddress("https://something.ngrok-free.app")
+        rule.onNodeWithText(string(R.string.settings_tls)).performScrollTo().performClick()
+
+        rule.onNodeWithText("something.ngrok-free.app:443").assertIsDisplayed()
+        rule.onNodeWithText(string(R.string.settings_save)).performClick()
+
+        rule.runOnIdle {
+            val settings = saved.first()
+            assertEquals(443, settings.serverPort)
+            assertEquals(false, settings.useTls)
+        }
+    }
+
+    @Test
+    fun credentials_in_the_address_are_refused_rather_than_sent_to_every_proxy_on_the_way() {
+        show(custom("relay.local"))
+
+        typeAddress("wss://ann:hunter2@relay.local")
+
+        rule.onNodeWithText(string(R.string.error_host_credentials)).assertIsDisplayed()
+        rule.onNodeWithText(string(R.string.settings_save)).assertIsNotEnabled()
     }
 
     @Test
@@ -121,7 +222,7 @@ class SettingsScreenTest {
 
     @Test
     fun turning_on_encryption_changes_the_url_it_will_dial() {
-        show(AppSettings(serverHost = "relay.local", serverPort = 8443, channel = 2))
+        show(custom("relay.local", 8443).copy(channel = 2))
 
         rule.onNodeWithText(string(R.string.settings_tls)).performScrollTo().performClick()
 

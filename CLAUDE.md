@@ -28,9 +28,9 @@ Package map and the MVI loop: [`docs/architecture.md`](docs/architecture.md). Do
 
 ```bash
 ./gradlew assembleDebug          # debug APK
-./gradlew testDebugUnitTest      # 103 unit tests
+./gradlew testDebugUnitTest      # 128 unit tests
 ./gradlew lintDebug              # 12 pre-existing findings; do not add a 13th
-ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest   # 32 Compose UI tests
+ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest   # 39 Compose UI tests
 ./gradlew build                  # full build
 ./gradlew assembleRelease        # unsigned unless PTT_KEYSTORE_PATH and friends are set
 adb -s <serial> install -r -g app/build/outputs/apk/debug/app-debug.apk
@@ -50,6 +50,11 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
   require it. Check `minCompileSdk` in the AAR's `aar-metadata.properties` first — see
   [`docs/build-and-run.md`](docs/build-and-run.md).
 - **Never hardcode a server host or port.** They are user settings in `data/settings/AppSettings.kt`.
+  `customHost`/`customPort` are what the user typed; `serverHost`/`serverPort` are derived from
+  `serverMode` and are what everything downstream dials. Read the derived pair, and do not make the
+  typed pair authoritative — Default has to be able to ignore it without losing it.
+- **`ServerMode.restore` must keep treating a stored address with no stored mode as Custom.**
+  Anything else silently moves an existing install off the relay it was configured for.
 - **The transport's url, pin and token travel together as `PttEndpoint`.** Do not add a fourth
   connection parameter that bypasses it — a bare url `String` is what let `wss://` be switched on
   without its matching pin.
@@ -74,6 +79,12 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
   (`.github/workflows/pages.yml`), not from a branch, because the same site also carries the
   F-Droid repository — a branch-based deployment would delete it. Screenshots in `docs/img/` are
   real device captures; retake them rather than editing them if the UI changes.
+- **The default relay lives in `relay.properties`, not in Kotlin.** `defaultRelay` is read at
+  build time into `BuildConfig.DEFAULT_RELAY_*` and is what **Settings → Relay → Default** dials;
+  a fork with its own relay changes that one line. It is a tracked file for the same reason the
+  version is — F-Droid builds a plain checkout with no Gradle properties — and it is parsed
+  strictly (`scheme://host:port`, both required) so a build ships exactly what is written.
+  `-PpttDefaultRelay=` or `PTT_DEFAULT_RELAY=` override it for a one-off build.
 - **The version lives in `version.properties`, not in a git tag.** F-Droid builds a plain checkout
   of the tagged commit with no Gradle properties, so the file has to be right in the commit. The
   release workflow fails a tag that disagrees with it.

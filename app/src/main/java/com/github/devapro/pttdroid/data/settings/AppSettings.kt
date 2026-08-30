@@ -1,16 +1,22 @@
 package com.github.devapro.pttdroid.data.settings
 
+import com.github.devapro.pttdroid.BuildConfig
 import com.github.devapro.pttdroid.network.PttEndpoint
 
 /**
  * User-configurable settings.
  *
- * [serverHost] used to be a hardcoded LAN address compiled into the socket class, which made
- * the app unusable on any other network.
+ * The relay address used to be a hardcoded LAN address compiled into the socket class, which made
+ * the app unusable on any other network. It is now a choice between the address the app ships with
+ * and one the user types: [customHost] and [customPort] are what they typed, and [serverHost] and
+ * [serverPort] are what the transport actually dials. Everything downstream reads the latter pair
+ * and never has to know which mode is in force.
  */
 data class AppSettings(
-    val serverHost: String = DEFAULT_HOST,
-    val serverPort: Int = DEFAULT_PORT,
+    val serverMode: ServerMode = ServerMode.DEFAULT,
+    /** Kept even while [serverMode] is [ServerMode.DEFAULT], so switching back does not lose it. */
+    val customHost: String = DEFAULT_HOST,
+    val customPort: Int = DEFAULT_PORT,
     val channel: Int = DEFAULT_CHANNEL,
     val displayName: String = DEFAULT_NAME,
     val floatingButtonEnabled: Boolean = false,
@@ -18,7 +24,7 @@ data class AppSettings(
     /** Run an on-device relay so no separate server is needed on a LAN. */
     val hostServerEnabled: Boolean = false,
     /** `wss://` instead of `ws://`. */
-    val useTls: Boolean = false,
+    val useTls: Boolean = DEFAULT_TLS,
     /**
      * SHA-256 fingerprint of the relay's certificate. Empty means "verify the normal way,
      * against the device's certificate authorities" — which is what a tunnel or a reverse
@@ -31,6 +37,10 @@ data class AppSettings(
     val floatingButtonX: Int = 0,
     val floatingButtonY: Int = 300,
 ) {
+    val serverHost: String get() = if (serverMode.isCustom) customHost.trim() else DEFAULT_HOST
+
+    val serverPort: Int get() = if (serverMode.isCustom) customPort else DEFAULT_PORT
+
     val scheme: String get() = if (useTls) "wss" else "ws"
 
     /** The address as the user should see it, with no credentials in it. */
@@ -49,11 +59,20 @@ data class AppSettings(
 
     companion object {
         /**
-         * An Android emulator reaches a server on the host machine at 10.0.2.2 —
-         * `localhost` inside the emulator is the emulator itself.
+         * The address behind [ServerMode.DEFAULT], set at build time by `defaultRelay` in
+         * `relay.properties` — a fork with its own relay changes that one line rather than
+         * anything here, and a packaged build then arrives already pointing at it.
+         *
+         * What this repository ships is `ws://10.0.2.2:8000`: an Android emulator reaches a
+         * server on the host machine at 10.0.2.2, since `localhost` inside an emulator is the
+         * emulator itself. That is useful for development and reaches nothing on a real handset,
+         * which is the honest state of things while there is no public relay to point at.
          */
-        const val DEFAULT_HOST: String = "10.0.2.2"
-        const val DEFAULT_PORT: Int = 8000
+        val DEFAULT_HOST: String = BuildConfig.DEFAULT_RELAY_HOST
+        val DEFAULT_PORT: Int = BuildConfig.DEFAULT_RELAY_PORT
+
+        /** Whether that address is `wss://`, and so whether a fresh install starts encrypted. */
+        val DEFAULT_TLS: Boolean = BuildConfig.DEFAULT_RELAY_TLS
         const val DEFAULT_CHANNEL: Int = 1
         const val DEFAULT_NAME: String = "Anon"
 
