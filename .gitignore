@@ -15,3 +15,5 @@ local.properties
 *.keystore
 *.p12
 keystore.properties
+/app/release/*
+/gradle/gradle-daemon-jvm.properties
