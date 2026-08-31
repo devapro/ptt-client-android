@@ -1,0 +1,151 @@
+# Native desktop installers for :desktopApp, one runner per operating system.
+#
+# jpackage — which Compose Desktop drives — does not cross-compile, and there is no flag that
+# makes it. `TargetFormat` binds every format to exactly one OS (Deb/Rpm → Linux, Dmg/Pkg →
+# macOS, Exe/Msi → Windows) and jpackage shells out to that OS's own tooling: dpkg-deb and
+# fakeroot for a .deb, hdiutil for a .dmg, the WiX Toolset for a .msi/.exe. An ubuntu-latest
+# runner therefore cannot produce a .dmg or a .exe at all. Worse, it does not say so: Compose
+# Desktop marks a task whose format is incompatible with the host as SKIPPED, so
+# `./gradlew :desktopApp:packageDmg` on Linux exits BUILD SUCCESSFUL having written nothing.
+# That is why this is a matrix rather than one Linux job, and why every upload below sets
+# `if-no-files-found: error` — it is the only thing that turns a silent skip into a red run.
+#
+# ci.yml keeps building the .deb on every push as a compile gate for :desktopApp. This workflow
+# is about shipping the installers, so it runs on tags, on demand, and on pull requests that
+# touch the packaging configuration itself (the changes that can actually break the non-Linux
+# legs, which nothing else here exercises).
+#
+# Everything it produces is UNSIGNED: no Authenticode certificate on Windows, no Developer ID
+# signature or notarisation on macOS. Gatekeeper and SmartScreen will both warn. Signing needs
+# paid certificates in CI secrets; see docs/build-and-run.md.
+name: Desktop packages
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+    paths:
+      - 'desktopApp/**'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    # One OS failing must not cancel the others — a .deb is still worth having if WiX breaks.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Linux (.deb)
+            artifact: desktopApp-linux-deb
+            tasks: ':desktopApp:packageDeb'
+            packages: desktopApp/build/compose/binaries/main/deb/*.deb
+          - os: windows-latest
+            label: Windows (.msi, .exe)
+            artifact: desktopApp-windows
+            tasks: ':desktopApp:packageMsi :desktopApp:packageExe'
+            packages: |
+              desktopApp/build/compose/binaries/main/msi/*.msi
+              desktopApp/build/compose/binaries/main/exe/*.exe
+          # macos-latest is arm64, so this .dmg is Apple-silicon only — the bundled JDK runtime
+          # is the host's architecture. An Intel build would need a second leg on macos-13.
+          - os: macos-latest
+            label: macOS (.dmg)
+            artifact: desktopApp-macos-dmg
+            tasks: ':desktopApp:packageDmg'
+            packages: desktopApp/build/compose/binaries/main/dmg/*.dmg
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # jpackage's Windows types both shell out to WiX 3's candle.exe/light.exe and will not run
+      # without them on PATH. The runner image ships WiX and points $WIX at it, but does not add
+      # its bin directory to PATH; install it only if the image ever stops shipping it.
+      - name: Put WiX 3 on PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bin = if ($env:WIX) { Join-Path $env:WIX 'bin' } else { '' }
+          if (-not ($bin -and (Test-Path (Join-Path $bin 'light.exe')))) {
+            choco install wixtoolset --version=3.14.1 --no-progress -y
+            $bin = 'C:\Program Files (x86)\WiX Toolset v3.14\bin'
+          }
+          Write-Host "Using WiX at $bin"
+          Add-Content -Path $env:GITHUB_PATH -Value $bin
+
+      # `package<Format>`, not `packageRelease<Format>`: the release variants run ProGuard over
+      # the desktop distribution, and this app's Koin/Ktor wiring is exactly the reflective kind
+      # that needs keep rules proved by launching the result. :app ships unminified for the same
+      # reason (see CLAUDE.md). Turning that on is a deliberate change, not a CI default.
+      #
+      # Building through bash on every OS keeps one command: gradlew's shell script runs fine
+      # under Git Bash on the Windows runner.
+      - name: Package
+        shell: bash
+        run: ./gradlew ${{ matrix.tasks }}
+
+      - name: Report what was built
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### ${{ matrix.label }}"
+            echo
+            echo '```'
+            # A glob loop rather than `find -printf`: -printf is GNU-only and the macOS leg's
+            # find is BSD's.
+            for package in desktopApp/build/compose/binaries/main/*/*; do
+              case "$package" in
+                *.deb|*.rpm|*.dmg|*.pkg|*.msi|*.exe)
+                  echo "$(basename "$package")  $(wc -c < "$package") bytes" ;;
+              esac
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.packages }}
+          if-no-files-found: error
+
+  release:
+    name: Attach to the GitHub release
+    if: github.ref_type == 'tag'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktopApp-*
+          path: dist
+          merge-multiple: true
+
+      # release.yml owns the release itself — the version check against version.properties, the
+      # signed APK and the F-Droid changelog as the body. This only adds assets to the release
+      # for the same tag; whichever job gets there first creates it, and release.yml's body_path
+      # fills the body in either order.
+      - name: Attach the installers
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

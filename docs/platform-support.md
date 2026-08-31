@@ -17,7 +17,7 @@ Compose Multiplatform module. This is the honest state of each, not the aspirati
 | Unit tests | `:shared:testDebugUnitTest` (136) | `:shared:desktopTest` (136, same source) | Frontend-compiled only — Kotlin/Native tests need a Mac to execute |
 | UI tests | `:shared:connectedDebugAndroidTest` (43: 40 pass, 3 skip without a live relay) | None | None |
 | CI coverage | `ci.yml`, `ubuntu-latest` | `ci.yml`, `ubuntu-latest` | `ios.yml`, `macos-latest` — the only place that actually links/runs iOS code; `ci.yml` only frontend-compiles it (see below) |
-| Packaging | Signed APK + F-Droid repo (`release.yml`) | `:desktopApp:packageDeb`/`packageMsi`/`packageDmg` (unsigned, not part of the release pipeline) | Xcode archive, not automated here |
+| Packaging | Signed APK + F-Droid repo (`release.yml`) | `.deb`/`.msi`/`.exe`/`.dmg` via `desktop.yml`, one runner per OS — jpackage cannot cross-compile, and a wrong-host task is silently `SKIPPED`. Unsigned and un-notarised; attached to the GitHub release on a tag | Xcode archive, not automated here |
 
 ## Why iOS is verified less than the other two
 

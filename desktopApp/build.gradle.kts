@@ -45,7 +45,16 @@ compose.desktop {
     application {
         mainClass = "com.github.devapro.pttdroid.desktop.MainKt"
         nativeDistributions {
-            targetFormats(TargetFormat.Deb, TargetFormat.Msi, TargetFormat.Dmg)
+            // Each format is bound to one OS by jpackage — Deb to Linux, Msi/Exe to Windows,
+            // Dmg to macOS — and cannot be cross-built, so `packageDeb` is the only one of these
+            // that works on this machine. .github/workflows/desktop.yml builds the rest on their
+            // own runners.
+            targetFormats(
+                TargetFormat.Deb,
+                TargetFormat.Msi,
+                TargetFormat.Exe,
+                TargetFormat.Dmg,
+            )
             packageName = "PTTdroid"
             packageVersion = appVersionName
         }

@@ -23,12 +23,46 @@ read that rather than assuming.
 ./gradlew assembleRelease                     # release APK — unsigned unless PTT_KEYSTORE_PATH and friends are set
 ./gradlew build                               # everything :app and :shared build for Android + desktop
 ./gradlew :desktopApp:run                     # run the desktop app directly
-./gradlew :desktopApp:packageDeb              # a .deb (also packageMsi, packageDmg on their native OS)
+./gradlew :desktopApp:packageDeb              # a .deb (packageMsi/packageExe/packageDmg only on their native OS)
 ./gradlew -PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64   # frontend-compile iOS, even on Linux
 ```
 
 See [`testing.md`](testing.md) for the full test-class breakdown and
 [`platform-support.md`](platform-support.md) for what each module/platform actually covers.
+
+### Desktop installers
+
+Compose Desktop drives `jpackage`, and **`jpackage` does not cross-compile.** Every
+`TargetFormat` is bound to one operating system, and the packaging is done by that OS's own
+tooling:
+
+| Format | Task | Only on | Needs |
+|---|---|---|---|
+| `.deb` | `:desktopApp:packageDeb` | Linux | `dpkg-deb`, `fakeroot` |
+| `.msi`, `.exe` | `:desktopApp:packageMsi`, `:desktopApp:packageExe` | Windows | WiX Toolset **3** on `PATH` |
+| `.dmg` | `:desktopApp:packageDmg` | macOS | `hdiutil` (built in) |
+
+There is no flag that produces a `.dmg` or an `.exe` from this Linux machine. **A task for the
+wrong host is `SKIPPED`, not failed** — `./gradlew :desktopApp:packageDmg` here prints
+`BUILD SUCCESSFUL` and writes nothing at all, so check for the file rather than the exit code.
+
+`.github/workflows/desktop.yml` is how the other two are built: a three-way matrix
+(`ubuntu-latest`, `windows-latest`, `macos-latest`), triggered by a `v*` tag, by
+`workflow_dispatch`, or by a pull request touching `desktopApp/`. It uploads each installer as a
+build artifact and, on a tag, attaches it to the same GitHub release `release.yml` publishes the
+APK to.
+
+Two limits worth knowing before pointing anyone at those files:
+
+- **They are unsigned.** No Authenticode certificate on Windows, no Developer ID signature or
+  notarisation on macOS, so SmartScreen and Gatekeeper both warn. Signing would need paid
+  certificates held as CI secrets, which this project does not have.
+- **The `.dmg` is Apple silicon only.** `macos-latest` is arm64 and the bundled runtime is the
+  host's architecture; an Intel build needs a second matrix leg on `macos-13`.
+
+The workflow runs `package<Format>`, not `packageRelease<Format>`. The release variants run
+ProGuard over the distribution, and the Koin/Ktor wiring here is the reflective kind that needs
+keep rules proved by launching the result — the same reason `:app` ships unminified.
 
 Install the Android app:
 
