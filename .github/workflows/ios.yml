@@ -1,0 +1,63 @@
+# iOS build gate (Phase 7a). This machine's regular CI (ci.yml) runs on ubuntu-latest, which
+# cannot resolve Apple klibs or produce Kotlin/Native binaries for Apple targets at all — see the
+# `enableIos` guard in shared/build.gradle.kts. This job is therefore the *only* place iOS
+# correctness is established; treat anything under shared/src/iosMain or iosApp/ as unverified
+# until this is green (see the Phase 7a report for what is most likely to fail here first).
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'shared/**'
+      - 'iosApp/**'
+      - 'gradle/**'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'shared/**'
+      - 'iosApp/**'
+      - 'gradle/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build shared framework & iOS app
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Fastest signal: pure Kotlin/Native compilation, no linking, no Xcode. Catches an iosMain
+      # compile error (the likeliest failure — see the Phase 7a report) in well under a minute of
+      # actual Kotlin/Native work, before paying for the slower link/Xcode steps below.
+      - name: Compile :shared for iosSimulatorArm64
+        run: ./gradlew -PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64
+
+      # Links the actual klib into a framework binary — exercises the cinterop calls in
+      # network/tls/PinnedTrust.ios.kt / PttHttpClient.ios.kt that compileKotlin alone does not
+      # fully validate.
+      - name: Link debug framework for iosSimulatorArm64
+        run: ./gradlew -PenableIosTargets=true :shared:linkDebugFrameworkIosSimulatorArm64
+
+      - name: Build iosApp with Xcode
+        run: |
+          xcodebuild -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            build

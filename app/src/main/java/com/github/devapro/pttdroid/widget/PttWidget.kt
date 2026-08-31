@@ -37,12 +37,14 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import com.github.devapro.pttdroid.R
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.domain.PttController
 import com.github.devapro.pttdroid.domain.PttState
 import com.github.devapro.pttdroid.service.PttServiceCommands
+import com.github.devapro.pttdroid.shared.resources.*
 import com.github.devapro.pttdroid.ui.PttUiStatus
+import org.jetbrains.compose.resources.getPluralString
+import org.jetbrains.compose.resources.getString
 import org.koin.core.context.GlobalContext
 
 /**
@@ -56,6 +58,15 @@ import org.koin.core.context.GlobalContext
  * The container follows the launcher's own theme, because a widget that ignores the home screen
  * looks broken; only the transmit key is painted from [PttUiStatus], because that colour is the
  * one thing that has to mean the same here as it does everywhere else.
+ *
+ * All display strings are resolved once in [writeState] — a `suspend` function — and stored as
+ * plain text in the Glance state, rather than resolved from `WidgetContent`'s `@Composable`
+ * scope. Compose Multiplatform's non-composable string accessor (`getString`/`getPluralString`)
+ * is `suspend`, and a `@Composable` function cannot call a `suspend` one directly; funnelling
+ * every resolution through the one `suspend` entry point that already seeds and refreshes this
+ * widget's state avoids the question of whether Glance's restricted composition even allows the
+ * Compose Multiplatform `stringResource`/`pluralStringResource` composables to be called from
+ * inside it.
  */
 class PttWidget : GlanceAppWidget() {
 
@@ -71,23 +82,14 @@ class PttWidget : GlanceAppWidget() {
 
     @Composable
     private fun WidgetContent() {
-        val context = LocalContext.current
         val prefs = currentState<androidx.datastore.preferences.core.Preferences>()
+        val channelLabel = prefs[KEY_CHANNEL_LABEL].orEmpty()
+        val statusLine = prefs[KEY_STATUS_LINE].orEmpty()
+        val toggleLabel = prefs[KEY_TOGGLE_LABEL].orEmpty()
+        val channel = prefs[KEY_CHANNEL] ?: 1
         val status = prefs[KEY_STATUS]
             ?.let { name -> runCatching { PttUiStatus.valueOf(name) }.getOrNull() }
             ?: PttUiStatus.OFFLINE
-        val channel = prefs[KEY_CHANNEL] ?: 1
-        val holder = prefs[KEY_HOLDER]?.takeIf { it.isNotEmpty() }
-        val peers = prefs[KEY_PEERS] ?: 0
-
-        val statusLine = when (status) {
-            PttUiStatus.RECEIVING -> holder
-                ?.let { context.getString(R.string.status_receiving_from, it) }
-                ?: context.getString(R.string.status_receiving)
-
-            PttUiStatus.OFFLINE, PttUiStatus.CONNECTING -> context.getString(status.labelRes)
-            else -> context.resources.getQuantityString(R.plurals.peers_online, peers, peers)
-        }
 
         Column(
             modifier = GlanceModifier
@@ -98,7 +100,7 @@ class PttWidget : GlanceAppWidget() {
             horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
         ) {
             Text(
-                text = context.getString(R.string.main_channel_number, channel),
+                text = channelLabel,
                 style = TextStyle(
                     fontWeight = FontWeight.Bold,
                     color = GlanceTheme.colors.onSurface,
@@ -113,13 +115,7 @@ class PttWidget : GlanceAppWidget() {
             Spacer(modifier = GlanceModifier.height(8.dp))
 
             Text(
-                text = context.getString(
-                    if (status == PttUiStatus.TRANSMITTING) {
-                        R.string.action_stop_talking
-                    } else {
-                        R.string.action_start_talking
-                    },
-                ).uppercase(),
+                text = toggleLabel,
                 style = TextStyle(
                     color = ColorProvider(ON_SIGNAL),
                     fontWeight = FontWeight.Bold,
@@ -179,8 +175,9 @@ class PttWidget : GlanceAppWidget() {
 
         val KEY_STATUS = stringPreferencesKey("status")
         val KEY_CHANNEL = intPreferencesKey("channel")
-        val KEY_PEERS = intPreferencesKey("peers")
-        val KEY_HOLDER = stringPreferencesKey("holder")
+        val KEY_CHANNEL_LABEL = stringPreferencesKey("channel_label")
+        val KEY_STATUS_LINE = stringPreferencesKey("status_line")
+        val KEY_TOGGLE_LABEL = stringPreferencesKey("toggle_label")
 
         val ACTION_KEY = ActionParameters.Key<String>("ptt_action")
         val CHANNEL_KEY = ActionParameters.Key<Int>("ptt_channel")
@@ -210,13 +207,39 @@ class PttWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = PttWidget()
 }
 
-/** Writes one widget's Glance state from [state]. */
+/**
+ * Writes one widget's Glance state from [state].
+ *
+ * `suspend`, and the only place [state]'s display strings are resolved — see the note on
+ * [PttWidget] for why `WidgetContent` itself only ever reads already-resolved text.
+ */
 internal suspend fun writeState(context: Context, id: GlanceId, state: PttState) {
+    val status = PttUiStatus.of(state)
+    val statusLine = when (status) {
+        PttUiStatus.RECEIVING -> getString(
+            Res.string.status_receiving_from,
+            state.floorHolderName ?: getString(Res.string.someone),
+        )
+
+        PttUiStatus.OFFLINE, PttUiStatus.CONNECTING -> getString(status.labelRes)
+
+        else -> getPluralString(Res.plurals.peers_online, state.peers, state.peers)
+    }
+    val channelLabel = getString(Res.string.main_channel_number, state.channel)
+    val toggleLabel = getString(
+        if (status == PttUiStatus.TRANSMITTING) {
+            Res.string.action_stop_talking
+        } else {
+            Res.string.action_start_talking
+        },
+    ).uppercase()
+
     updateAppWidgetState(context, id) { prefs ->
-        prefs[PttWidget.KEY_STATUS] = PttUiStatus.of(state).name
+        prefs[PttWidget.KEY_STATUS] = status.name
         prefs[PttWidget.KEY_CHANNEL] = state.channel
-        prefs[PttWidget.KEY_PEERS] = state.peers
-        prefs[PttWidget.KEY_HOLDER] = state.floorHolderName ?: ""
+        prefs[PttWidget.KEY_CHANNEL_LABEL] = channelLabel
+        prefs[PttWidget.KEY_STATUS_LINE] = statusLine
+        prefs[PttWidget.KEY_TOGGLE_LABEL] = toggleLabel
     }
 }
 

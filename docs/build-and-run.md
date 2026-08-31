@@ -16,14 +16,21 @@ read that rather than assuming.
 ## Commands
 
 ```bash
-./gradlew assembleDebug          # debug APK
-./gradlew testDebugUnitTest      # 29 JVM unit tests
-./gradlew lintDebug              # Android lint
-./gradlew assembleRelease        # unsigned release APK
-./gradlew build                  # everything
+./gradlew assembleDebug                       # debug APK (:app, pulling in :shared)
+./gradlew testDebugUnitTest                   # 136 JVM unit tests (:shared, on the androidTarget compilation)
+./gradlew :shared:desktopTest                  # the same 136 tests again, on the desktop compilation
+./gradlew lintDebug                           # :app: 12 pre-existing findings; :shared: 0
+./gradlew assembleRelease                     # release APK — unsigned unless PTT_KEYSTORE_PATH and friends are set
+./gradlew build                               # everything :app and :shared build for Android + desktop
+./gradlew :desktopApp:run                     # run the desktop app directly
+./gradlew :desktopApp:packageDeb              # a .deb (also packageMsi, packageDmg on their native OS)
+./gradlew -PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64   # frontend-compile iOS, even on Linux
 ```
 
-Install:
+See [`testing.md`](testing.md) for the full test-class breakdown and
+[`platform-support.md`](platform-support.md) for what each module/platform actually covers.
+
+Install the Android app:
 
 ```bash
 adb -s <serial> install -r -g app/build/outputs/apk/debug/app-debug.apk
@@ -58,6 +65,31 @@ To check before bumping anything AndroidX:
 curl -s https://dl.google.com/dl/android/maven2/<group/path>/<artifact>/<ver>/<artifact>-<ver>.aar \
   | unzip -p - META-INF/com/android/build/gradle/aar-metadata.properties | grep minCompileSdk
 ```
+
+**`:shared` carries the same compileSdk-36 ceiling, and two constraints of its own:**
+
+- **Compose Multiplatform 1.12.0 wants `androidx.compose.*` at versions that require compileSdk
+  37.** `shared/build.gradle.kts`'s `androidMain` dependencies pin the same androidx Compose
+  version as `:app` by depending on `enforcedPlatform(libs.androidx.compose.bom)` (2026.06.01, the
+  same BOM `:app` uses via a plain `platform(...)`), and the root `build.gradle.kts` forces
+  `androidx.lifecycle:lifecycle-{viewmodel,runtime}-compose:2.10.0` on every subproject's non-iOS
+  configurations — `org.jetbrains.androidx.lifecycle`'s Compose Multiplatform artifacts publish
+  their *android* target as a substitution onto those exact coordinates, and the 2.11.0 version CMP
+  1.12.0 asks for needs compileSdk 37. Read the KDoc on both force sites before touching either.
+- **`:shared` must keep the deprecated `com.android.library` Gradle plugin — do not switch it to
+  `com.android.kotlin.multiplatform.library`.** The new plugin is what Kotlin's own deprecation
+  warning suggests, and the build stays green either way, but switching makes Compose Multiplatform
+  resources (`composeResources/`, `Res.string.*`/`Res.drawable.*`) silently stop packaging into the
+  APK — the app then crashes at launch with a `MissingResourceException`, a known Compose
+  Multiplatform issue (JetBrains CMP-9547). Verified for this repo: a release APK built with
+  `com.android.library` contains `assets/composeResources/com.github.devapro.pttdroid.shared.resources/`;
+  don't take that on faith after changing the plugin.
+- **Do not add `iosX64()` to `:shared`'s target list.** Compose Multiplatform publishes no
+  `iosX64` variant of `org.jetbrains.compose.runtime:runtime` (or any other Compose artifact), for
+  any release back to 1.8.2 — declaring it fails `appleMain` dependency resolution outright, before
+  a single line of Kotlin/Native even compiles. iosX64 (Intel simulator) has no real device or
+  Apple Silicon simulator behind it anyway, so nothing is lost by targeting only `iosArm64` (devices)
+  and `iosSimulatorArm64` (Apple Silicon simulators).
 
 ## The default relay
 
@@ -132,3 +164,48 @@ adb devices -l
 Install on both, set both to the same channel and leave the relay on **Default** (`10.0.2.2`), then
 hold PTT on one and watch the other. Put them on different channels to confirm they are isolated.
 Details in [`testing.md`](testing.md).
+
+## iOS
+
+`:shared`'s `iosArm64()`/`iosSimulatorArm64()` targets only exist when the build can
+actually compile them — a real Mac, or `-PenableIosTargets=true` — see the guard at the top of
+`kotlin { }` in `shared/build.gradle.kts`. On a Linux machine (this one, and this repo's regular
+`ci.yml`) they are absent from a plain `./gradlew build`/`./gradlew projects`, but Linux *can*
+frontend-compile them (klib, not link) with the opt-in flag:
+
+```bash
+./gradlew -PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64
+./gradlew -PenableIosTargets=true :shared:compileKotlinIosArm64
+```
+
+This is a genuinely useful, cheap gate even without a Mac: it catches a bad `expect`/`actual` pair
+or a cinterop signature error in well under a minute, and it is part of both this repo's normal
+build gate and `ci.yml`. It cannot *link or run* iOS code, though — Kotlin/Native's Apple linker and
+the simulator/device runtime both need a real Apple toolchain.
+
+On a Mac, with Xcode installed:
+
+```bash
+./gradlew :shared:embedAndSignAppleFrameworkForXcode   # or let Xcode's build phase do it
+open iosApp/iosApp.xcodeproj                            # build/run the "iosApp" scheme
+```
+
+`.github/workflows/ios.yml` is where linking and running are actually exercised — a `macos-latest`
+job that compiles `:shared` for `iosSimulatorArm64`, links the framework, then builds
+`iosApp.xcodeproj` with `xcodebuild`. Treat anything under `iosMain`/`iosApp/` as compile-verified
+but link/runtime-verified only when that job is green — see
+[`platform-support.md`](platform-support.md).
+
+Two non-obvious things that cost real debugging time getting `iosMain` to compile, worth knowing
+before touching it again: some Apple APIs are Objective-C *categories*, which Kotlin/Native exposes
+as top-level extension functions/properties needing their own explicit imports rather than being
+visible as members of the type they appear to extend — `platform.Foundation.serverTrust` (an
+`NSURLProtectionSpace` extension) and `platform.AVFAudio.setActive` (an `AVAudioSession` extension)
+both look like plain unresolved members until the import is added. Second,
+`kotlinx.cinterop.get`/`set`/`plus` (used for `CPointer`/`CValuesRef` indexing in
+`PinnedTrust.ios.kt` and `IosAudio.kt`) are themselves extension functions in `kotlinx.cinterop`,
+not operators the compiler provides for free.
+
+iOS audio (`audio/IosAudio.kt`) is a real `AVAudioEngine`-backed implementation — see
+[`audio-pipeline.md`](audio-pipeline.md#ios-capture--playback) for the capture/playback pipeline,
+and `docs/known-issues.md` for what's still unverified without a device.

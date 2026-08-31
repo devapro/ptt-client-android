@@ -29,8 +29,15 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Unit tests
+      # :shared's unit tests (136), on the androidTarget compilation. :app has none of its own
+      # left after the Compose Multiplatform migration — everything testable moved to :shared.
+      - name: Unit tests (Android target)
         run: ./gradlew testDebugUnitTest
+
+      # The same 136 tests again, on the desktop (JVM) compilation — this is a distinct compile
+      # and a distinct test run, not a cache hit off the line above.
+      - name: Unit tests (desktop target)
+        run: ./gradlew :shared:desktopTest
 
       - name: Lint
         run: ./gradlew lintDebug
@@ -38,22 +45,42 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew assembleDebug
 
+      - name: Assemble desktop app
+        run: ./gradlew :desktopApp:packageDeb
+
+      # Cheap Linux-side iOS signal: frontend-compiles (klib, not link) shared/src/iosMain for both
+      # iOS targets. Cannot catch a link-time or runtime failure — that needs ios.yml's macOS
+      # runner — but it catches a bad expect/actual pair or cinterop signature error in well under
+      # a minute, without paying for a macOS runner on every push. See docs/platform-support.md.
+      - name: Frontend-compile :shared for iOS
+        run: ./gradlew -PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64 :shared:compileKotlinIosArm64
+
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-report
-          path: app/build/reports/tests/
+          path: |
+            shared/build/reports/tests/
+            shared/build/test-results/desktopTest/
 
       - name: Upload lint report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: lint-report
-          path: app/build/reports/lint-results-debug.html
+          path: |
+            app/build/reports/lint-results-debug.html
+            shared/build/reports/lint-results-debug.html
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload desktop package
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktopApp-deb
+          path: desktopApp/build/compose/binaries/main/deb/*.deb

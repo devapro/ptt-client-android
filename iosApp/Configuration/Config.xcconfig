@@ -1,0 +1,11 @@
+// Never commit a signing identity/team here (see CLAUDE.md's "Never commit key material" rule).
+// Each developer/CI runner sets TEAM_ID locally (Xcode > Signing & Capabilities, or
+// `-xcconfig`/env override) — an empty value here just means automatic signing has no team to
+// pick until one is supplied, which is fine for the simulator-only build ios.yml runs.
+TEAM_ID=
+
+PRODUCT_NAME=PTTdroid
+PRODUCT_BUNDLE_IDENTIFIER=com.github.devapro.pttdroid$(TEAM_ID)
+
+CURRENT_PROJECT_VERSION=1
+MARKETING_VERSION=1.0

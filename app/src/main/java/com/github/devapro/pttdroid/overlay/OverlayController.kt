@@ -17,6 +17,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
+import org.jetbrains.compose.resources.getString
 import timber.log.Timber
 
 /**
@@ -73,7 +74,12 @@ class OverlayController(
 
     private fun apply() {
         if (enabledBySetting && !appVisible && canDrawOverlay()) show() else hide()
-        bubble?.render(PttUiStatus.of(lastState), lastState.channel)
+        val status = PttUiStatus.of(lastState)
+        val channel = lastState.channel
+        // getString(StringResource) is suspend — this view is a plain Android View with no
+        // coroutine of its own, so the resolve happens here, on uiScope, and only the finished
+        // text crosses into render().
+        uiScope.launch { bubble?.render(status, channel, getString(status.captionRes)) }
     }
 
     private fun show() {
@@ -109,7 +115,8 @@ class OverlayController(
                     bubble = view
                     layoutParams = params
                     val current = controller.state.value
-                    view.render(PttUiStatus.of(current), current.channel)
+                    val currentStatus = PttUiStatus.of(current)
+                    view.render(currentStatus, current.channel, getString(currentStatus.captionRes))
                     Timber.i("Floating PTT bubble shown at %d,%d", params.x, params.y)
                 }
                 .onFailure { Timber.e(it, "Could not add the overlay window") }

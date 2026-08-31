@@ -1,8 +1,10 @@
 # PTTdroid
 
-An Android push-to-talk radio for a channel you host yourself. Hold the button, talk, everyone
-else on your channel hears you — over your own [PTT server](https://github.com/devapro/ptt-server),
-or over the relay this app can host on the phone itself.
+A push-to-talk radio for a channel you host yourself — Android, desktop and iOS, built on one
+Compose Multiplatform codebase. Hold the button, talk, everyone else on your channel hears you —
+over your own [PTT server](https://github.com/devapro/ptt-server), or over the relay the
+Android/desktop builds can host on the machine itself. See
+[`docs/platform-support.md`](docs/platform-support.md) for exactly what each platform has.
 
 The point is that you can talk **without opening the app**: a microphone foreground service keeps
 the channel connected, and you can transmit from a floating button over other apps, a home-screen
@@ -86,7 +88,8 @@ Toolchain and the two build constraints that are easy to break:
   MVI example.
 - **Ktor** — `ktor-client-websockets` over OkHttp for the socket; `ktor-server-cio` for the
   optional on-device relay.
-- **Koin** — DI, `di/AppDi.kt`.
+- **Koin** — DI, split across `:shared`'s `di/SharedDi.kt` (platform-independent) plus a small
+  platform module per target, and `:app`'s `di/AppDi.kt` (Android-only classes).
 - **Jetpack Compose** + Material 3, **Glance** for the widget, **DataStore** for settings.
 
 Two things to know before changing anything:
@@ -111,8 +114,8 @@ on the floating bubble and another on the big button.
 ## Tests
 
 ```bash
-./gradlew testDebugUnitTest                                  # 128 JVM tests
-ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest   # 39 Compose UI tests
+./gradlew :shared:testDebugUnitTest :shared:desktopTest       # 136 JVM tests, on both targets
+ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 39 Compose UI tests (of 43 total; 3 opt-in TLS tests need a live relay)
 ./gradlew lintDebug                                          # 12 pre-existing findings, no more
 ```
 
@@ -143,6 +146,7 @@ python3 -m http.server -d docs 8080   # then open http://localhost:8080
 |---|---|
 | [`docs/ui-design.md`](docs/ui-design.md) | What the interface is for, and the rules it follows |
 | [`docs/architecture.md`](docs/architecture.md) | Package map, the MVI loop, the service/overlay/widget |
+| [`docs/platform-support.md`](docs/platform-support.md) | What Android, desktop and iOS each have and do not have |
 | [`docs/features.md`](docs/features.md) | What the app does, from the user's side |
 | [`docs/audio-pipeline.md`](docs/audio-pipeline.md) | Capture → wire → playback |
 | [`docs/build-and-run.md`](docs/build-and-run.md) | Toolchain and build constraints |

@@ -21,8 +21,8 @@ class VoicePlayer : VoicePlayerContract {
 
         val minBuffer = AudioTrack.getMinBufferSize(
             AudioConfig.SAMPLE_RATE_HZ,
-            AudioConfig.OUT_CHANNEL_MASK,
-            AudioConfig.PCM_ENCODING,
+            AndroidAudioFormat.OUT_CHANNEL_MASK,
+            AndroidAudioFormat.PCM_ENCODING,
         )
         if (minBuffer == AudioTrack.ERROR || minBuffer == AudioTrack.ERROR_BAD_VALUE) {
             Timber.e("Speaker does not support %d Hz mono PCM16", AudioConfig.SAMPLE_RATE_HZ)
@@ -42,9 +42,9 @@ class VoicePlayer : VoicePlayerContract {
                 )
                 .setAudioFormat(
                     AudioFormat.Builder()
-                        .setEncoding(AudioConfig.PCM_ENCODING)
+                        .setEncoding(AndroidAudioFormat.PCM_ENCODING)
                         .setSampleRate(AudioConfig.SAMPLE_RATE_HZ)
-                        .setChannelMask(AudioConfig.OUT_CHANNEL_MASK)
+                        .setChannelMask(AndroidAudioFormat.OUT_CHANNEL_MASK)
                         .build(),
                 )
                 .setBufferSizeInBytes(bufferSize)

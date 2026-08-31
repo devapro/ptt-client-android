@@ -15,6 +15,12 @@ datastorePreferences = "1.2.1"
 glance = "1.2.0"
 coroutines = "1.11.0"
 serializationJson = "1.11.0"
+composeMultiplatform = "1.12.0"
+# org.jetbrains.androidx.lifecycle — the multiplatform lifecycle fork used by :shared's common
+# code. Distinct from the "lifecycle" version above, which is androidx.lifecycle (Android-only,
+# used directly by :app).
+lifecycleCompose = "2.11.0"
+kermit = "2.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -41,7 +47,19 @@ network-ktor-server-cio = { group = "io.ktor", name = "ktor-server-cio", version
 network-ktor-server-websockets = { group = "io.ktor", name = "ktor-server-websockets", version.ref = "ktor" }
 logs-timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "timber" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-swing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+# :shared (Compose Multiplatform) dependencies.
+di-koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
+di-koin-compose = { group = "io.insert-koin", name = "koin-compose", version.ref = "koin" }
+di-koin-compose-viewmodel = { group = "io.insert-koin", name = "koin-compose-viewmodel", version.ref = "koin" }
+lifecycle-viewmodel-compose-multiplatform = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycleCompose" }
+lifecycle-runtime-compose-multiplatform = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycleCompose" }
+# iOS only — not wired into any source set until Phase 7 adds iosMain (see shared/build.gradle.kts).
+network-ktor-darwin = { group = "io.ktor", name = "ktor-client-darwin", version.ref = "ktor" }
+kermit = { group = "co.touchlab", name = "kermit", version.ref = "kermit" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
@@ -56,5 +74,10 @@ network-ktor-tls-certificates = { group = "io.ktor", name = "ktor-network-tls-ce
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 jetbrainsKotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+jetbrainsKotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 jetbrainsKotlinCompose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 jetbrainsKotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+androidLibrary = { id = "com.android.library", version.ref = "agp" }
+androidKotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }

@@ -9,6 +9,18 @@
 .cxx
 local.properties
 
+### Compose Multiplatform modules ###
+# :app has its own app/.gitignore (/build); these are the other three modules' build outputs,
+# none of which had one before this module existed.
+/shared/build
+/desktopApp/build
+
+### iOS (iosApp/, Xcode) ###
+/iosApp/build
+xcuserdata/
+*.xcuserdatad
+*.xcuserstate
+
 ### Release signing ###
 # Never commit key material. The release workflow decodes these from CI secrets at build time.
 *.jks

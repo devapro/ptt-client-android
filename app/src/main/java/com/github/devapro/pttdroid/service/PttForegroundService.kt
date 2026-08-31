@@ -46,7 +46,7 @@ class PttForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        PttNotifications.ensureChannel(this)
+        scope.launch { PttNotifications.ensureChannel(this@PttForegroundService) }
         observeState()
     }
 
@@ -58,24 +58,30 @@ class PttForegroundService : Service() {
             }
 
             PttServiceCommands.ACTION_TOGGLE_TALK -> {
-                promoteToForeground()
-                controller.toggleTalk()
+                scope.launch {
+                    promoteToForeground()
+                    controller.toggleTalk()
+                }
             }
 
             PttServiceCommands.ACTION_START_TALK -> {
-                promoteToForeground()
-                controller.requestTalk()
+                scope.launch {
+                    promoteToForeground()
+                    controller.requestTalk()
+                }
             }
 
             PttServiceCommands.ACTION_STOP_TALK -> controller.releaseTalk()
 
             PttServiceCommands.ACTION_SET_CHANNEL -> {
-                promoteToForeground()
                 val channel = intent.getIntExtra(
                     PttServiceCommands.EXTRA_CHANNEL,
                     AppSettings.DEFAULT_CHANNEL,
                 )
-                controller.setChannel(channel)
+                scope.launch {
+                    promoteToForeground()
+                    controller.setChannel(channel)
+                }
             }
 
             else -> {
@@ -84,7 +90,7 @@ class PttForegroundService : Service() {
                 ) {
                     Timber.d("Unrecognised action %s; starting session anyway", action)
                 }
-                promoteToForeground()
+                scope.launch { promoteToForeground() }
             }
         }
 
@@ -92,7 +98,14 @@ class PttForegroundService : Service() {
         return START_STICKY
     }
 
-    private fun promoteToForeground() {
+    /**
+     * `suspend`: building the notification resolves Compose Multiplatform string resources,
+     * which only has a suspending non-composable accessor. Every call site above is already
+     * inside `scope.launch { }` — `scope` is `Dispatchers.Main.immediate`, so this still starts
+     * executing synchronously and only genuinely suspends at the resource read, which is well
+     * inside the window Android allows between `onStartCommand` and `startForeground`.
+     */
+    private suspend fun promoteToForeground() {
         val notification = PttNotifications.build(this, controller.state.value)
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
@@ -162,7 +175,7 @@ class PttForegroundService : Service() {
      * POST_NOTIFICATIONS is revocable from API 33, and the user can also disable the channel,
      * so both are checked — `notify` would otherwise be silently dropped or throw.
      */
-    private fun refreshNotification(state: com.github.devapro.pttdroid.domain.PttState) {
+    private suspend fun refreshNotification(state: com.github.devapro.pttdroid.domain.PttState) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
                 this,

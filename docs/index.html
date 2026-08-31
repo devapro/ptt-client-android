@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PTTdroid</title>
-<meta name="description" content="A push-to-talk radio for Android, running over a WebSocket relay you host yourself. One talker per channel, enforced by the server.">
+<meta name="description" content="A push-to-talk radio for Android, desktop and iOS, running over a WebSocket relay you host yourself. One talker per channel, enforced by the server.">
 <meta property="og:title" content="PTTdroid — self-hosted push-to-talk">
 <meta property="og:description" content="Hold the button, talk, everyone on your channel hears you. Over a relay you run yourself.">
 <meta property="og:type" content="website">
@@ -216,11 +216,11 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
 
 <header class="wrap hero">
   <div>
-    <span class="kicker"><span class="led"></span>Kotlin · Compose · self-hosted</span>
+    <span class="kicker"><span class="led"></span>Kotlin Multiplatform · Compose · self-hosted</span>
     <h1>Hold the<br>button</h1>
     <p class="lede">
-      A push-to-talk radio for Android, running over a WebSocket relay you host yourself.
-      One talker per channel, enforced by the server — so two people pressing at once
+      A push-to-talk radio for Android, desktop and iOS, running over a WebSocket relay you host
+      yourself. One talker per channel, enforced by the server — so two people pressing at once
       cannot both be heard.
     </p>
     <div class="cta">
@@ -457,11 +457,11 @@ adb install -r -g \
     <div class="cols" style="margin-top:34px; align-items:start">
       <div>
         <h3><a href="https://github.com/devapro/ptt-client-android">ptt-client-android</a></h3>
-        <p class="muted small">Kotlin, MVI, Jetpack Compose, a Glance widget, Koin, Ktor client.
-        One controller owns the connection, the microphone and the speaker, hosted by a foreground
-        service — the screen, the floating bubble and the widget are all observers of a single
-        state flow.</p>
-        <p class="small" style="margin-top:.9em">103 unit tests · 32 Compose UI tests</p>
+        <p class="muted small">Kotlin, MVI, Compose Multiplatform (Android, desktop and iOS), a
+        Glance widget on Android, Koin, Ktor client. One controller owns the connection, the
+        microphone and the speaker; on Android it is hosted by a foreground service, and the
+        screen, the floating bubble and the widget are all observers of a single state flow.</p>
+        <p class="small" style="margin-top:.9em">136 unit tests · 39 Compose UI tests</p>
       </div>
       <div>
         <h3><a href="https://github.com/devapro/ptt-server">ptt-server</a></h3>

@@ -17,7 +17,7 @@
 | 11 | `UtilPermission.resultListeners` was never cleared and retained the Activity; legacy `onRequestPermissionsResult` | Activity Result API; both permission classes deleted |
 | 12 | Channel could go to 0 and negative | Clamped to 1..99 in the UI, the reducer and the settings layer |
 | 13 | `Theme.kt` set the deprecated `window.statusBarColor`, a no-op under targetSdk 36's enforced edge-to-edge | `enableEdgeToEdge()` + `safeDrawingPadding()` |
-| 14 | Two AGP template stub tests, no CI | 128 unit + 39 UI tests, and three workflows: CI, tagged releases, and Pages |
+| 14 | Two AGP template stub tests, no CI | 136 unit tests (on both the Android and desktop targets) + 39 Compose UI tests, and four workflows: CI, iOS, tagged releases, and Pages |
 | 15 | Deprecated `android.preference.PreferenceManager` | DataStore (`data/settings/`) |
 | 16 | Dead code: `PTTWebSocketListener`, unused permission constants, unused Ktor dependency | Removed; Ktor is now the actual client |
 | 17 | Hardcoded `ws://192.168.100.4:8000` | User-configurable host/port in Settings |
@@ -39,6 +39,9 @@
 | 27 | `InternalPttServerTest` raced: it released the floor on one socket and immediately requested it on another, with no ordering guarantee between them, so the server was free to answer `floor_busy` | The test waits for the release broadcast before requesting |
 
 ## Still open
+
+See [`platform-support.md`](platform-support.md) for the full Android/desktop/iOS matrix these
+overlap with.
 
 - **No accounts.** The access token is one shared secret for everybody: no per-handset
   credentials, no revocation, no audit trail. Changing it means telling everyone the new one.
@@ -63,6 +66,31 @@
   adaptive vector icon. Regenerate from a real asset pipeline if one appears.
 - **No landscape layout for Settings** beyond scrolling — the form is a single column at any size.
 - **No jitter buffer** beyond `AudioTrack`'s own, and no packet reordering or loss concealment.
+- **iOS's certificate pin does not check the certificate's validity window** (Phase 7a,
+  `network/tls/PinnedTrust.ios.kt`/`PttHttpClient.ios.kt`). The JVM path's `PinnedTrustManager`
+  rejects an expired-but-correctly-pinned certificate with a distinguishable message
+  ("The relay's certificate expired on..."); the iOS `handleChallenge` callback only compares the
+  SHA-256 of the presented DER certificate against the stored pin and otherwise defers to
+  `NSURLCredential.credentialForTrust`, so an expired certificate that still matches the pin is
+  accepted. Closing this needs a DER `Validity` (notBefore/notAfter) parser running against the
+  bytes `leafCertificateDer` already extracts — not built yet; out of scope for Phase 7a/7b, whose
+  goal was a compiling iOS framework and real audio, not full pinning parity.
+- **iOS has no cross-app overlay window, no home-screen widget equivalent, no
+  notification-driven transmit toggle** (Phase 7b). Android's three "talk without opening the app"
+  surfaces (`overlay/OverlayBubbleView`, `widget/PttWidget`, the foreground-service notification's
+  action button — see `docs/architecture.md`) all depend on platform APIs iOS does not expose to
+  third-party apps the same way: `WindowManager`-style always-on-top windows do not exist on iOS;
+  a home-screen widget equivalent would need a separate WidgetKit extension target (its own
+  process, its own tiny UI, no direct method calls into the running app — a materially bigger
+  addition than Android's Glance widget) and could not do hold-to-talk regardless, for the same
+  RemoteViews-style discrete-tap reason Android's own widget can't (see the "widget cannot do
+  hold-to-talk" gotcha below); and iOS notification actions cannot open the microphone from a
+  background handler. **Backgrounded operation on iOS is real as of Phase 7b** but works
+  differently from Android's foreground service: it depends on `UIBackgroundModes: audio` in
+  `Info.plist` plus an active `AVAudioSession` (configured by `IosVoiceRecorder`/`IosVoicePlayer`
+  themselves — see `IosPttSessionLauncher`'s KDoc), not a foreground service the OS can be asked to
+  keep alive; there is no iOS notification with a transmit-toggle action the way
+  `service/PttNotifications` provides on Android.
 
 ## Gotchas
 
@@ -86,8 +114,12 @@
   the real one only by surrounding spaces gets in, which is why the settings layer trims before
   storing rather than relying on the comparison.
 - **Lint flags every hand-written trust manager and hostname verifier** (`CustomX509TrustManager`,
-  `BadHostnameVerifier`) and it is right to. The two suppressions in `network/tls/PinnedTrust.kt`
-  are annotated with why; do not add more without the same justification.
+  `TrustAllX509TrustManager`, `BadHostnameVerifier`, `AllowAllHostnameVerifier`) and it is right
+  to. `network/tls/PinnedTrust.kt` (now in `:shared`'s jvmCommonMain, shared with the desktop
+  target — see `docs/architecture.md`) used to carry `@SuppressLint` for these; that annotation is
+  Android-only, so the four checks are disabled in `:shared`'s lint config
+  (`shared/build.gradle.kts`) instead, with the justification recorded there. Do not add more
+  without the same justification.
 - **A microphone foreground service cannot be started from the background** on Android 14+. Start it
   from a visible Activity or an exempt gesture (notification action, widget tap); the widget and
   overlay only toggle transmit on an already-running service.
@@ -98,3 +130,44 @@
 - **A freshly placed widget has no state** until something changes, so `provideGlance` seeds it from
   the controller.
 - **Emulator microphones capture silence.** Verify frame flow and floor state, not audibility.
+- **`:app`'s release build currently ships with `isMinifyEnabled = false`, so R8 does not run and
+  the two keep rules below are dormant.** They stay in `app/proguard-rules.pro` because a minified
+  `:app:assembleRelease` needs them and nothing in this repo's own code would suggest either one.
+  Both were found by actually installing and launching a minified release build (see
+  `docs/fdroid.md` / the Phase 8 F-Droid reproducibility check, from before minification was
+  reverted), not by reading R8's warnings alone — the first is a build failure, the second is a
+  launch-time crash:
+  - Ktor's client-core carries a debugger-presence check
+    (`io.ktor.util.debug.IntellijIdeaDebugDetector`) that references
+    `java.lang.management.ManagementFactory`/`RuntimeMXBean` — real JVM classes that do not exist on
+    Android and are never reached at runtime there. R8 refuses to proceed on the missing classes
+    unless told they're expected: `-dontwarn java.lang.management.ManagementFactory` /
+    `RuntimeMXBean` (`app/proguard-rules.pro`).
+  - `androidx.work` (a transitive dependency — nothing in this app calls WorkManager directly; it
+    arrives via `androidx.datastore`/`androidx.glance`) auto-initializes via
+    `androidx.startup.InitializationProvider`, which builds a Room database (`WorkDatabase`)
+    reflectively: `androidx.room.util.KClassUtil.findAndInstantiateDatabaseImpl` looks up the
+    generated `WorkDatabase_Impl` by name and calls `getDeclaredConstructor().newInstance()`.
+    `work-runtime`'s own consumer rule (`-keep class * extends androidx.room.RoomDatabase { void
+    <init>(); }`) only protects the no-arg constructor and was not enough — the app crashed at
+    launch with `Failed to create an instance of androidx.work.impl.WorkDatabase`
+    (`InstantiationException`, the exact exception `KClassUtil` catches when the reflective
+    `newInstance()` fails). Fixed by keeping the whole class:
+    `-keep class * extends androidx.room.RoomDatabase { *; }` plus
+    `-keep class androidx.work.impl.WorkDatabase_Impl { *; }` (`app/proguard-rules.pro`). Verified
+    by installing the resulting signed release APK on an emulator and confirming the app launches
+    and renders — this is exactly the class of failure a debug build, or an unminified release
+    build, never shows.
+- **On Linux, `javax.sound.sampled`'s "default" line can silently reach the wrong device.**
+  `DesktopVoiceRecorder`/`DesktopVoicePlayer` (Phase 6) use `AudioSystem.getLine(info)` on purpose
+  — not a hardcoded mixer — because that is the only choice that is portable across a user's
+  actual machine. But JavaSound's ALSA provider resolves the literal PCM name `"default"`, and on a
+  box where PulseAudio/PipeWire owns it, `"default"` follows whatever that server's own default
+  *source* is pointed at — which is not necessarily a microphone. `AudioSystem.isLineSupported`
+  returns true, `open()`/`start()` succeed, `read()` returns a normal byte count: nothing in the
+  API surface distinguishes this from a working capture device, so it cannot be detected or worked
+  around from the code. The fix, if it happens, is entirely in the audio server's own default-input
+  routing (e.g. `pactl set-default-source` / `wpctl set-default`), not in this class. Verified on
+  one such box: the exact same `javax.sound.sampled` calls returned all-zero samples through the
+  "default" line while an explicit hardware mixer on the same box captured a genuine non-zero
+  signal — see `docs/audio-pipeline.md#desktop-capture--playback`.

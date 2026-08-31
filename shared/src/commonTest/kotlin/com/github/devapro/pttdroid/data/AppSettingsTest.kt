@@ -1,0 +1,222 @@
+package com.github.devapro.pttdroid.data
+
+import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.ServerAddress
+import com.github.devapro.pttdroid.data.settings.ServerMode
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
+
+class AppSettingsTest {
+
+    // A test-local literal port and an explicit `useTls = false`: these tests are about custom
+    // host/port handling and plaintext-scheme behaviour, not about whatever relay.properties
+    // ships as the default, so they must not inherit BuildConfig.DEFAULT_RELAY_TLS.
+    private fun custom(host: String, port: Int = 8000) = AppSettings(
+        serverMode = ServerMode.CUSTOM,
+        customHost = host,
+        customPort = port,
+        useTls = false,
+    )
+
+    @Test
+    fun `channel is clamped into range`() {
+        // The old +/- selector let the channel reach 0 and go negative.
+        assertEquals(1, AppSettings.clampChannel(0))
+        assertEquals(1, AppSettings.clampChannel(-5))
+        assertEquals(99, AppSettings.clampChannel(100))
+        assertEquals(42, AppSettings.clampChannel(42))
+    }
+
+    @Test
+    fun `websocket url carries channel version and encoded name`() {
+        val url = custom("10.0.2.2", 8000).copy(
+            channel = 7,
+            displayName = "Alice",
+        ).webSocketUrl()
+
+        assertEquals("ws://10.0.2.2:8000/channel/7?name=Alice&v=1", url)
+    }
+
+    @Test
+    fun `display name with spaces and symbols is url encoded`() {
+        val url = AppSettings(displayName = "Bob & Co").webSocketUrl()
+        assertTrue(url.contains("name=Bob+%26+Co"), "name should be encoded, got $url")
+    }
+
+    @Test
+    fun `port range covers the whole legal space and nothing else`() {
+        assertEquals(1, AppSettings.PORT_RANGE.first)
+        assertEquals(65_535, AppSettings.PORT_RANGE.last)
+    }
+
+    @Test
+    fun `a name longer than the limit is truncated before it reaches the wire`() {
+        // The server rejects over-long names; the client must not be the one that gets refused.
+        val url = AppSettings(displayName = "x".repeat(80)).webSocketUrl()
+        val name = url.substringAfter("name=").substringBefore("&")
+        assertEquals(AppSettings.MAX_NAME_LENGTH, name.length)
+    }
+
+    @Test
+    fun `a unicode name survives encoding`() {
+        val url = AppSettings(displayName = "Ann–Bö").webSocketUrl()
+        assertTrue(url.contains("name=Ann%E2%80%93B%C3%B6"), "expected percent-encoding, got $url")
+    }
+
+    @Test
+    fun `an empty name still produces a well formed url`() {
+        val url = AppSettings(displayName = "").webSocketUrl()
+        assertTrue(url.endsWith("?name=&v=1"), "got $url")
+    }
+
+    @Test
+    fun `the url always carries the protocol version`() {
+        // The server refuses a connection without it; forgetting it is a silent lockout.
+        assertTrue(AppSettings().webSocketUrl().contains("v=1"))
+    }
+
+    @Test
+    fun `an ipv4 host and a hostname are both left intact`() {
+        assertTrue(custom("192.168.1.20").webSocketUrl().startsWith("ws://192.168.1.20:"))
+        assertTrue(custom("relay.local").webSocketUrl().startsWith("ws://relay.local:"))
+    }
+
+    @Test
+    fun `a default-mode AppSettings dials whatever the build shipped`() {
+        // `defaultRelay` in relay.properties is read into BuildConfig.DEFAULT_RELAY_* at build
+        // time, and AppSettings.DEFAULT_HOST/PORT/TLS read that same BuildConfig — so this must
+        // assert behaviour (a fresh, default-mode AppSettings dials whatever was shipped), never
+        // a specific address. A fork changes relay.properties and this keeps passing unchanged.
+        assertEquals(AppSettings.DEFAULT_HOST, AppSettings().serverHost)
+        assertEquals(AppSettings.DEFAULT_PORT, AppSettings().serverPort)
+        assertEquals(AppSettings.DEFAULT_TLS, AppSettings().useTls)
+    }
+
+    @Test
+    fun `the shipped default is an address the app would also accept as a custom one`() {
+        // The build parses relay.properties strictly and the address box parses what is typed
+        // leniently. They are separate grammars, so this pins that a build cannot ship a default
+        // the app itself would refuse.
+        val parsed = ServerAddress.parse("${AppSettings.DEFAULT_HOST}:${AppSettings.DEFAULT_PORT}")
+
+        assertEquals(
+            ServerAddress.Valid(AppSettings.DEFAULT_HOST, AppSettings.DEFAULT_PORT, null),
+            parsed,
+        )
+    }
+
+    // --- default vs custom relay ------------------------------------------------------------
+
+    @Test
+    fun `the default mode dials the built-in address whatever is stored under custom`() {
+        // Switching to Default must not lose what was typed, and must not dial it either.
+        val settings = AppSettings(customHost = "relay.local", customPort = 9000)
+
+        assertEquals(ServerMode.DEFAULT, settings.serverMode)
+        assertEquals(AppSettings.DEFAULT_HOST, settings.serverHost)
+        assertEquals(AppSettings.DEFAULT_PORT, settings.serverPort)
+        assertEquals("relay.local", settings.customHost)
+    }
+
+    @Test
+    fun `the custom mode dials what was typed`() {
+        val settings = custom("relay.local", 9000)
+
+        assertEquals("relay.local", settings.serverHost)
+        assertEquals(9000, settings.serverPort)
+        assertTrue(settings.webSocketUrl().startsWith("ws://relay.local:9000/"))
+    }
+
+    @Test
+    fun `a custom host is trimmed before it reaches the wire`() {
+        assertEquals("relay.local", custom("  relay.local  ").serverHost)
+    }
+
+    // --- transport security -----------------------------------------------------------------
+
+    @Test
+    fun `the scheme follows the encryption toggle`() {
+        val plain = custom("relay.example.com", 8000).copy(channel = 3)
+
+        assertEquals("ws://relay.example.com:8000/channel/3", plain.displayUrl())
+        assertEquals(
+            "wss://relay.example.com:8000/channel/3",
+            plain.copy(useTls = true).displayUrl(),
+        )
+        assertTrue(plain.copy(useTls = true).webSocketUrl().startsWith("wss://"))
+    }
+
+    @Test
+    fun `the displayed url carries no credentials`() {
+        val settings = AppSettings(useTls = true, accessToken = "s3cret", displayName = "Ann")
+
+        assertFalse(settings.displayUrl().contains("s3cret"))
+        assertFalse(settings.displayUrl().contains("Ann"))
+    }
+
+    @Test
+    fun `the endpoint carries the pin only when encryption is on`() {
+        val pin = "FD0EFB7BD3BB639FA169910467D1C65C3302269A87C899C2F05DE933CB500689"
+        // useTls is a test-local literal here: this test is about the plaintext/encrypted split,
+        // not about whichever scheme the shipped default happens to use.
+        val settings = AppSettings(certificateSha256 = pin, useTls = false)
+
+        // A pin left over from an encrypted relay must not be applied to a ws:// connection,
+        // where it would silently do nothing and imply protection that is not there.
+        assertEquals("", settings.endpoint().pinnedSha256)
+        assertEquals(pin, settings.copy(useTls = true).endpoint().pinnedSha256)
+    }
+
+    @Test
+    fun `the endpoint normalizes a pasted fingerprint`() {
+        val settings = AppSettings(
+            useTls = true,
+            certificateSha256 = "fd:0e:fb:7b:d3:bb:63:9f:a1:69:91:04:67:d1:c6:5c:" +
+                "33:02:26:9a:87:c8:99:c2:f0:5d:e9:33:cb:50:06:89",
+        )
+
+        assertEquals(
+            "FD0EFB7BD3BB639FA169910467D1C65C3302269A87C899C2F05DE933CB500689",
+            settings.endpoint().pinnedSha256,
+        )
+    }
+
+    @Test
+    fun `an unusable fingerprint becomes no pin rather than a pin that matches nothing`() {
+        val settings = AppSettings(useTls = true, certificateSha256 = "FD:0E")
+
+        assertEquals("", settings.endpoint().pinnedSha256)
+    }
+
+    @Test
+    fun `the endpoint trims the access token`() {
+        assertEquals("s3cret", AppSettings(accessToken = "  s3cret  ").endpoint().accessToken)
+        assertEquals("", AppSettings().endpoint().accessToken)
+    }
+
+    @Test
+    fun `the trust profile changes with the pin and the scheme, not with the channel`() {
+        val pin = "FD0EFB7BD3BB639FA169910467D1C65C3302269A87C899C2F05DE933CB500689"
+        val secure = AppSettings(useTls = true, certificateSha256 = pin)
+
+        assertEquals(
+            secure.endpoint().trustProfile,
+            secure.copy(channel = 9, displayName = "Someone else").endpoint().trustProfile,
+        )
+        assertNotEquals(secure.endpoint().trustProfile, secure.copy(useTls = false).endpoint().trustProfile)
+        assertNotEquals(
+            secure.endpoint().trustProfile,
+            secure.copy(certificateSha256 = "").endpoint().trustProfile,
+        )
+    }
+
+    @Test
+    fun `only a wss url counts as secure`() {
+        assertTrue(AppSettings(useTls = true).endpoint().isSecure)
+        // Test-local literal: this checks the ws:// side of the split, not the shipped default.
+        assertFalse(AppSettings(useTls = false).endpoint().isSecure)
+    }
+}

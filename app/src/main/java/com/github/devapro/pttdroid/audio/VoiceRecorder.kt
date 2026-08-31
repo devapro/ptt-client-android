@@ -1,7 +1,6 @@
 package com.github.devapro.pttdroid.audio
 
 import android.annotation.SuppressLint
-import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import kotlinx.coroutines.CoroutineScope
@@ -39,8 +38,8 @@ class VoiceRecorder(private val scope: CoroutineScope) : VoiceRecorderContract {
 
         val minBuffer = AudioRecord.getMinBufferSize(
             AudioConfig.SAMPLE_RATE_HZ,
-            AudioConfig.IN_CHANNEL_MASK,
-            AudioConfig.PCM_ENCODING,
+            AndroidAudioFormat.IN_CHANNEL_MASK,
+            AndroidAudioFormat.PCM_ENCODING,
         )
         if (minBuffer == AudioRecord.ERROR || minBuffer == AudioRecord.ERROR_BAD_VALUE) {
             Timber.e("Microphone does not support %d Hz mono PCM16", AudioConfig.SAMPLE_RATE_HZ)
@@ -53,8 +52,8 @@ class VoiceRecorder(private val scope: CoroutineScope) : VoiceRecorderContract {
             AudioRecord(
                 MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 AudioConfig.SAMPLE_RATE_HZ,
-                AudioConfig.IN_CHANNEL_MASK,
-                AudioConfig.PCM_ENCODING,
+                AndroidAudioFormat.IN_CHANNEL_MASK,
+                AndroidAudioFormat.PCM_ENCODING,
                 bufferSize,
             )
         } catch (e: IllegalArgumentException) {

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<!--
+	 Required: the app records audio (the whole point of a push-to-talk client). Without this,
+	 iOS kills the app the instant it touches the microphone, with no dialog and no obvious cause.
+	 IosVoiceRecorder (audio/IosAudio.kt, Phase 7b) is the real AVAudioEngine-backed recorder that
+	 opens the mic.
+	-->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PTTdroid needs the microphone to transmit on the push-to-talk channel.</string>
+	<!--
+	 Lets the app keep an audio session (and therefore the WebSocket connection alongside it)
+	 alive while backgrounded — the iOS analogue of PttForegroundService on Android. Declaring the
+	 mode is necessary but not sufficient: it also needs an active AVAudioSession category that
+	 requests background audio, which IosVoiceRecorder/IosVoicePlayer configure and activate
+	 themselves as of Phase 7b (see IosPttSessionLauncher's KDoc and docs/architecture.md).
+	-->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+</dict>
+</plist>

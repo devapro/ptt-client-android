@@ -11,9 +11,13 @@
   non-fatal and only needs logging.
 - Never swallow `CancellationException` — rethrow it. Catch it explicitly before a broad
   `catch (e: Exception)` if that block exists.
-- Constructor injection only, wired in `di/AppDi.kt`. No service locators, no `GlobalContext.get()`
-  in application code — the one exception is `PttWidget.provideGlance`, where Glance gives no
-  injection point (and it is wrapped in `runCatching`).
+- Constructor injection only. The platform-independent graph is wired in `:shared`'s
+  `di/SharedDi.kt`; each platform adds its own module (`SharedDiAndroid.kt`/`SharedDiDesktop.kt`/
+  `SharedDiIos.kt` in `:shared`, `AppDi.kt` in `:app` for Android-only classes that need a real
+  `Context`/`AudioRecord`/`AudioTrack`/`PttForegroundService`) — see `docs/architecture.md`'s Koin
+  graph section for the full split. No service locators, no `GlobalContext.get()` in application
+  code — the one exception is `PttWidget.provideGlance`, where Glance gives no injection point (and
+  it is wrapped in `runCatching`).
 
 ## Architecture
 
@@ -51,10 +55,12 @@ Rationale for all of the above: [`ui-design.md`](ui-design.md).
 
 ## Logging
 
-- Timber only, and **never on a per-audio-frame path** (`VoiceRecorder`'s read loop,
-  `VoicePlayer.play`, the relay path). At 25 frames/second per direction this floods logcat and
-  costs battery.
-- `Timber.plant` is gated on `BuildConfig.DEBUG`.
+- **Never on a per-audio-frame path** (`VoiceRecorder`'s read loop, `VoicePlayer.play`,
+  `DesktopVoiceRecorder`/`DesktopVoicePlayer`, `IosAudio.kt`'s tap/render callbacks, the relay
+  path). At 25 frames/second per direction this floods the log and costs battery.
+- `:app` (Android-only code) uses Timber, gated by `Timber.plant` on `BuildConfig.DEBUG`. `:shared`
+  commonMain/jvmCommonMain/iosMain code — which has no `Timber` — uses `PttLog`, a thin Kermit
+  facade with the same per-frame rule (see its KDoc).
 - Log lifecycle transitions (connect, disconnect, floor grant/release, device open/close) at info;
   recoverable faults at debug/warn with the exception attached.
 

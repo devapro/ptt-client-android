@@ -21,4 +21,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "PTTdroid"
 include(":app")
- 
+include(":shared")
+include(":desktopApp")

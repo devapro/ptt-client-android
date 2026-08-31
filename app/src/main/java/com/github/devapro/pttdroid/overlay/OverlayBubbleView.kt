@@ -69,7 +69,13 @@ class OverlayBubbleView(
 
     private var status: PttUiStatus = PttUiStatus.OFFLINE
     private var channel: Int = 1
-    private var caption: String = context.getString(status.captionRes)
+    // Resolved by the caller (OverlayController), not read here: PttUiStatus.captionRes is a
+    // Compose Multiplatform StringResource now, and its only non-composable accessor is
+    // `suspend`. This view is a plain Android View with no coroutine of its own, so
+    // OverlayController resolves the caption in its own scope and passes the finished text in
+    // through render(). Blank until the first render() call, which happens before the window is
+    // ever added — see OverlayController.show().
+    private var caption: String = ""
     private var pressed = false
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
@@ -79,12 +85,12 @@ class OverlayBubbleView(
     private var lastRawY = 0f
     private var dragging = false
 
-    /** Repaints for [next] and [onChannel]. No-ops when nothing visible has changed. */
-    fun render(next: PttUiStatus, onChannel: Int) {
-        if (status == next && channel == onChannel) return
+    /** Repaints for [next], [onChannel] and [captionText]. No-ops when nothing has changed. */
+    fun render(next: PttUiStatus, onChannel: Int, captionText: String) {
+        if (status == next && channel == onChannel && caption == captionText) return
         status = next
         channel = onChannel
-        caption = context.getString(next.captionRes)
+        caption = captionText
         invalidate()
     }
 

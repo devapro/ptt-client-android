@@ -36,6 +36,7 @@ import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
 import com.github.devapro.pttdroid.viewmodel.MainActivityViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getString
 import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
 
@@ -146,7 +147,7 @@ class MainActivity : ComponentActivity() {
                         MainEvent.RequestMicPermission -> requestMicPermission()
                         MainEvent.RequestOverlayPermission -> requestOverlayPermission()
                         is MainEvent.ShowMessage ->
-                            snackbarHostState.showSnackbar(getString(event.messageRes))
+                            snackbarHostState.showSnackbar(getString(resource = event.messageRes))
                     }
                 }
             }

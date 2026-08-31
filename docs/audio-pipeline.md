@@ -88,11 +88,122 @@ happened in release builds too. Timber is now planted only when `BuildConfig.DEB
 
 Coarse lifecycle events (device opened, format, failures) are still logged.
 
+## Desktop capture / playback
+
+`:desktopApp` has no Android classes to lean on, so `DesktopVoiceRecorder`/`DesktopVoicePlayer`
+(`:shared` desktopMain, `audio/DesktopAudio.kt`, Phase 6) implement the same two contracts with
+`javax.sound.sampled`, built to the same format (`AudioFormat(16000f, 16, 1, signed=true,
+bigEndian=false)`) and the same buffer depth (`AudioConfig.FRAME_BYTES * 4`).
+
+Two differences from the Android classes, both forced by the `javax.sound.sampled` API rather than
+a change in intent:
+
+- **`TargetDataLine.read` can short-read**, where `AudioRecord.read` on Android is just trimmed to
+  the bytes actually captured. A short, odd-length frame on the wire would violate the protocol's
+  fixed `AudioConfig.FRAME_BYTES` contract, so the read loop assembles frames through
+  `audio/FrameAccumulator.kt` instead of emitting one `read()` call's result directly — it carries
+  any partial frame to the next read and only emits once a full frame's worth of bytes has
+  accumulated. `FrameAccumulatorTest` (`commonTest`) covers exact frames, short reads spread over
+  several calls, an oversized chunk spanning more than one frame, and a remainder carried across
+  calls — all hardware-independent.
+- **`SourceDataLine.write` has no non-blocking mode.** Android's `AudioTrack.write` is called with
+  `WRITE_NON_BLOCKING` so the network receive path never stalls; `DesktopVoicePlayer.play` instead
+  hands each frame to a small `Channel(4, DROP_OLDEST)` drained by its own IO coroutine, so a slow
+  or blocked line drops late audio rather than stalling the caller.
+
+No capture/playback device, or one that refuses to open (`AudioSystem.isLineSupported` false, or a
+`LineUnavailableException`/`IllegalArgumentException` from `open()`), is not fatal: the failure is
+logged once at acquisition (never per frame) and the affected side just stays inert — no capture
+means `frames` never emits, no playback means `play()` is a no-op — so the app still runs as a
+listen-only (or transmit-only) client instead of crashing.
+
+## iOS capture / playback
+
+`:shared` iosMain (`audio/IosAudio.kt`, Phase 7b) implements the same two contracts with
+`AVAudioEngine`, converting to and from [the fixed wire format](#format) explicitly rather than
+assuming the hardware or the render callback will hand it over in that shape directly.
+
+**Capture — tap, convert, re-chunk:**
+
+```
+AVAudioSession (PlayAndRecord / VoiceChat, active)
+    │
+    ▼
+engine.inputNode.setVoiceProcessingEnabled(true)      ← AEC, iOS 13+; failure is not fatal
+    │
+    ▼
+installTapOnBus(0, …, hwFormat) { buffer, _ -> … }    ← REALTIME AUDIO THREAD
+    │  AVAudioConverter(hwFormat → 16 kHz mono Int16), one reused output AVAudioPCMBuffer
+    │  one memcpy of int16ChannelData into a ByteArray
+    ▼
+rawChunks: Channel<ByteArray>(64, DROP_OLDEST)  ── trySend, nothing else on this thread
+    │
+    ▼
+Dispatchers.Default coroutine ──▶ FrameAccumulator ──▶ frames: Channel<ByteArray>(64, DROP_OLDEST)
+```
+
+The tap runs on a realtime audio thread with the same "no logging, no heavy allocation, no
+blocking" constraint as Android's `VoiceRecorder` read loop and desktop's line-read loop (see
+Logging, below) — the `AVAudioConverter`/`AVAudioPCMBuffer` it uses are constructed once in
+`start()` and reused every callback, not allocated per frame. Re-chunking arbitrary hardware-buffer
+sizes into exact `AudioConfig.FRAME_BYTES` pieces is the same [`FrameAccumulator`](#lifecycle) desktop
+uses for the same reason (a capture API that doesn't guarantee frame-sized reads), just fed from a
+channel instead of a blocking line read.
+
+Tapping in the hardware's own format (queried via `inputFormatForBus`, never assumed) and
+converting explicitly mirrors the same lesson desktop's `AudioSystem.getLine` code learned: don't
+assume a capture API will hand over 16 kHz mono PCM16 directly. The conversion always goes through
+`AVAudioConverter`'s block-based `convertToBuffer(outputBuffer:error:withInputFromBlock:)`, not the
+plain `convertToBuffer(outputBuffer:fromBuffer:error:)` overload — Apple documents the latter as
+unsupported for sample-rate conversion, and a phone's hardware input rate is essentially never
+natively 16 kHz.
+
+**Playback — a pull render node, not a push scheduler:**
+
+```
+Frame.Binary ──▶ ConnectionEvent.Audio ──▶ IosVoicePlayer.play(pcm)
+                                                │  Int16LE → Float32 (sample / 32768f)
+                                                ▼
+                                    queue: Channel<FloatArray>(4, DROP_OLDEST)
+                                                │
+                                                ▼ tryReceive() — never blocks
+                        AVAudioSourceNode render block  ← REALTIME AUDIO THREAD
+                          drains queued Float32 frames into the AudioBufferList
+                          CoreAudio actually asks for; silence on underrun
+```
+
+`AVAudioSourceNode` was chosen over `AVAudioPlayerNode.scheduleBuffer` because a *pull* render
+block matches "network delivers asynchronously, hardware consumes synchronously" more directly
+than a *push* API with completion-handler bookkeeping — see the class KDoc in `IosAudio.kt` for
+the full reasoning. The render block's playback cursor (which queued `FloatArray` is draining, and
+how far into it) is local, captured state; the only cross-thread handoff is `queue`'s
+`trySend`/`tryReceive`, the same non-suspending pair `DesktopVoicePlayer`'s `pending` channel
+already relies on for an analogous producer/realtime-consumer split. The ring depth (4 frames)
+matches Android's `AudioTrack` buffer depth (`AudioConfig.FRAME_BYTES * 4`).
+
+Both classes' `AVAudioSession` category/activation happens here, not in `IosPttSessionLauncher` —
+see that class's KDoc for how that interacts with `UIBackgroundModes: audio` for backgrounded
+operation. `prepare()`/`release()` are idempotent on both sides, and `PttController` always
+releases the recorder and the player together, so `IosVoicePlayer.release()` deactivating the
+shared `AVAudioSession` never cuts off capture still in progress on the other object.
+
+**What is and isn't verified.** Every cinterop signature in `IosAudio.kt` was checked against
+`klib dump-metadata` on this project's own Kotlin/Native platform klibs, and the file compiles for
+real (`-PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64`/`compileKotlinIosArm64`) —
+but a Linux frontend compile cannot exercise real hardware, so behaviour (whether the one-shot
+`AVAudioConverter` call actually drains a full tap buffer, render-thread timing, a real device's
+mic route, `AVAudioSession` interruption handling) is unverified until `.github/workflows/ios.yml`
+and a real device run. See the Phase 7b report for the full, prioritised list.
+
 ## Testing note
 
 `audio/AudioContracts.kt` defines `VoiceRecorderContract` and `VoicePlayerContract` so the domain
 layer can be unit-tested on the JVM — `AudioRecord` and `AudioTrack` are unavailable outside an
-instrumented test. `PttControllerTest` drives fakes for both.
+instrumented test. `PttControllerTest` drives fakes for both. `audio/FrameAccumulator.kt` is the
+one piece of the desktop implementation that is hardware-independent and gets its own unit test
+(`FrameAccumulatorTest`, `commonTest`); the rest of `DesktopVoiceRecorder`/`DesktopVoicePlayer` can
+only be smoke-tested against real hardware.
 
 On an emulator the microphone usually captures silence. Verification therefore asserts on frame
-flow and floor state rather than on audibility — see [`testing.md`](testing.md).
+flow and floor state rather than on audibility — see [`testing.md`](testing.md). The same caution
+applies to a desktop box whose default audio device is misrouted (see `known-issues.md`).

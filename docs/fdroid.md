@@ -125,6 +125,32 @@ Central under an OSI licence, and there are no Google Play services.
 `AutoUpdateMode: Version` and `UpdateCheckMode: Tags` mean new tags are picked up without another
 merge request, as long as `version.properties` and the tag agree.
 
+## Verifying the plain-checkout build still works (Compose Multiplatform migration)
+
+Splitting the app into `:app`/`:shared`/`:desktopApp` (see `docs/architecture.md`) is exactly the
+kind of change that could quietly break F-Droid's plain-checkout build even while every other gate
+stays green, since F-Droid builds with **no Gradle properties and no environment variables set**.
+Checked directly, not assumed:
+
+```bash
+env -u PTT_KEYSTORE_PATH -u PTT_DEFAULT_RELAY ./gradlew clean :app:assembleRelease
+```
+
+- Produces an unsigned APK (expected — no keystore env vars).
+- `BuildConfig.DEFAULT_RELAY_*` and versionName/versionCode in that APK match `relay.properties`
+  and `version.properties` exactly (checked with `aapt dump badging` and by grepping the dex for
+  the relay host string).
+- `:shared`'s classes and its `composeResources/` assets are both present in the APK
+  (`assets/composeResources/com.github.devapro.pttdroid.shared.resources/…`) — the packaging
+  failure mode a wrong Gradle plugin choice on `:shared` produces (see `docs/build-and-run.md`)
+  is release-build-shaped risk, not just a debug-build one, so this was checked on the actual
+  release APK, not just `assembleDebug`.
+- The signed release APK installs and **launches** on a device/emulator without crashing. This was
+  also checked with `isMinifyEnabled = true` during an earlier phase, before that setting was
+  reverted to match what `main` (and F-Droid) has always shipped — see `docs/known-issues.md`'s
+  R8/WorkManager gotcha for the one real issue that surfaced and how it was fixed, kept in
+  `app/proguard-rules.pro` in case minification is turned back on.
+
 ## What is not automated
 
 - Bumping `version.properties`, writing the changelog, and adding the `Builds` entry to the
