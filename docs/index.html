@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PTTdroid</title>
-<meta name="description" content="A push-to-talk radio for Android, desktop and iOS, running over a WebSocket relay you host yourself. One talker per channel, enforced by the server.">
+<meta name="description" content="A push-to-talk radio for Android, desktop and iOS from one Compose Multiplatform codebase, running over a WebSocket relay you host yourself. One talker per channel, enforced by the server.">
 <meta property="og:title" content="PTTdroid — self-hosted push-to-talk">
 <meta property="og:description" content="Hold the button, talk, everyone on your channel hears you. Over a relay you run yourself.">
 <meta property="og:type" content="website">
@@ -170,6 +170,23 @@ h3{
 .state{display:inline-flex; align-items:center; gap:.6rem; font-weight:600; white-space:nowrap}
 .led-sm{width:.7rem; height:.7rem; border-radius:50%; flex:0 0 auto}
 
+/* platform matrix — capabilities against the three targets. Deliberately colourless:
+   green/amber/red on this page already mean talk-floor states, and a second meaning for
+   the same colour would undo that. Presence is carried by the word, absence by a dash. */
+.scroller{overflow-x:auto}
+.matrix{width:100%; min-width:600px; border-collapse:collapse; font-size:.9rem}
+.matrix th,.matrix td{
+  text-align:left; padding:.75rem .7rem; border-bottom:1px solid var(--edge); vertical-align:top;
+}
+.matrix thead th{
+  font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:.68rem;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--faint); white-space:nowrap;
+}
+.matrix tbody th{font-weight:600; color:var(--text)}
+.matrix tbody td{color:var(--muted)}
+.matrix tbody tr:last-child th,.matrix tbody tr:last-child td{border-bottom:0}
+.matrix .no{color:var(--faint)}
+
 pre{
   background:var(--code-bg); border:1px solid var(--edge); border-radius:4px;
   padding:18px 20px; overflow-x:auto; margin:0 0 1em; color:#CBD5E1;
@@ -192,6 +209,7 @@ ul.tight li{margin-bottom:.5em}
 ul.tight li:last-child{margin-bottom:0}
 ul.tight strong{color:var(--text); font-weight:600}
 .muted{color:var(--muted)}
+.muted strong{color:var(--text); font-weight:600}
 .small{font-size:.9rem}
 figcaption{
   font-family:"IBM Plex Mono",monospace; font-size:.7rem; letter-spacing:.14em;
@@ -277,6 +295,105 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
 </section>
 
 <section class="wrap panel">
+  <p class="label">Platforms</p>
+  <div>
+    <h2>One codebase,<br>three platforms</h2>
+    <div class="cols" style="margin-top:34px; align-items:start">
+      <div>
+        <p>Android, desktop and iOS are the same Kotlin, compiled three ways.
+        <strong>Compose Multiplatform</strong> draws the screen above on all three from one set of
+        composables &mdash; so the button, the colours and the wording cannot drift apart between
+        platforms, because there is only one of each to change.</p>
+
+        <p>A single <code>:shared</code> module holds everything that is not tied to a device: the
+        socket, the talk-floor logic, the settings store, the ten reducers and the whole interface.
+        What is left outside it is small &mdash; the Android launcher is thirteen Kotlin files, and
+        the desktop app is one <code>Window {}</code>.</p>
+
+        <p>Below that, one intermediate source set belongs to Android and desktop together: the
+        OkHttp transport, the pinned trust manager and the on-device relay all need JVM APIs that
+        iOS does not have. iOS brings its own three instead &mdash; Ktor's Darwin engine, a
+        hand-rolled certificate pin check, and <code>AVAudioEngine</code>.</p>
+      </div>
+      <div>
+<pre>:shared
+├─ commonMain      <span class="c">android · desktop · ios</span>
+├─ jvmCommonMain   <span class="c">android · desktop</span>
+├─ androidMain
+├─ desktopMain
+└─ iosMain
+
+:app          <span class="c">Android launcher, service,</span>
+              <span class="c">widget, overlay bubble</span>
+:desktopApp   <span class="c">one Window {}</span>
+iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
+        <p class="muted small">The same 136 unit tests run twice, compiled once for Android and
+        once for desktop. iOS Kotlin is compiled on every push &mdash; which a Linux machine can
+        do &mdash; then linked into a real framework and built through Xcode on a macOS runner,
+        which is the only place that part can happen.</p>
+      </div>
+    </div>
+
+    <div class="scroller" style="margin-top:46px">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th scope="col"></th>
+            <th scope="col">Android</th>
+            <th scope="col">Desktop</th>
+            <th scope="col">iOS</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Talk floor, channels, reconnect, settings</th>
+            <td>Yes</td><td>Yes</td><td>Yes</td>
+          </tr>
+          <tr>
+            <th scope="row">Microphone and speaker</th>
+            <td><code>AudioRecord</code></td>
+            <td><code>javax.sound</code></td>
+            <td><code>AVAudioEngine</code></td>
+          </tr>
+          <tr>
+            <th scope="row">Pinned <code>wss://</code></th>
+            <td>Yes</td><td>Yes</td>
+            <td>Yes, minus the certificate's validity window</td>
+          </tr>
+          <tr>
+            <th scope="row">Host a relay on this device</th>
+            <td>Yes</td><td>Yes</td><td class="no">&mdash;</td>
+          </tr>
+          <tr>
+            <th scope="row">Keeps talking with the app out of the way</th>
+            <td>Yes, a foreground service, indefinitely</td>
+            <td>While its window is open</td>
+            <td>Audio survives backgrounding</td>
+          </tr>
+          <tr>
+            <th scope="row">Floating button, widget, notification</th>
+            <td>Yes</td><td class="no">&mdash;</td><td class="no">&mdash;</td>
+          </tr>
+          <tr>
+            <th scope="row">Packaged by CI</th>
+            <td>Signed APK, F&#8209;Droid repository</td>
+            <td><code>.deb</code> <code>.msi</code> <code>.exe</code> <code>.dmg</code></td>
+            <td>Xcode archive, by hand</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted small" style="margin-top:26px">
+      The dashes are platform limits rather than a backlog: neither desktop nor iOS gives a
+      third-party app an always-on-top window over everything else, iOS cannot open the microphone
+      from a background notification handler, and the on-device relay is a JVM server. Row by row,
+      with the reasoning:
+      <a href="https://github.com/devapro/ptt-client-android/blob/main/docs/platform-support.md">platform-support.md</a>.
+    </p>
+  </div>
+</section>
+
+<section class="wrap panel">
   <p class="label">Interface</p>
   <div>
     <h2>Built for not<br>looking at it</h2>
@@ -333,13 +450,13 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
 </section>
 
 <section class="wrap panel">
-  <p class="label">Hands-free</p>
+  <p class="label">Hands-free · Android</p>
   <div>
     <h2>Talk without<br>opening the app</h2>
     <div class="cols" style="margin-top:34px">
       <div>
-        <p>A microphone foreground service keeps the channel connected, so the app does not have
-        to be in front — or even open — to hear or be heard.</p>
+        <p>On Android, a microphone foreground service keeps the channel connected, so the app
+        does not have to be in front &mdash; or even open &mdash; to hear or be heard.</p>
         <ul class="tight">
           <li><strong>Floating button</strong> — hold to talk over any other app, drag to move.
           It carries the channel number and a microphone, struck through whenever a press would
@@ -350,6 +467,12 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
         <p class="muted small" style="margin-top:1.3em">
           The widget is a toggle rather than a hold, because a widget only ever receives discrete
           clicks — there is no touch-down and touch-up to hold on to.
+        </p>
+        <p class="muted small" style="margin-top:1.1em">
+          All three surfaces are Android's, and are the one part of the app that is not shared.
+          Neither desktop nor iOS has a cross-app window or a home screen to put them on; the
+          desktop build talks for as long as its window is open, and the iOS build for as long as
+          its audio session survives being backgrounded.
         </p>
       </div>
       <figure style="margin:0; display:grid; place-items:center">
@@ -375,6 +498,13 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
     workflow's log</a> — that is the only thing tying this repository to the project. Signed APKs
     are also attached to each
     <a href="https://github.com/devapro/ptt-client-android/releases">GitHub release</a>.</p>
+    <p class="muted small" style="margin-top:1.1em"><strong>Desktop.</strong> The same tag
+    builds installers &mdash; <code>.deb</code>, <code>.msi</code>, <code>.exe</code> and
+    <code>.dmg</code>, one per runner, since jpackage cannot cross-compile &mdash; attached to that
+    same GitHub release. They are unsigned and un-notarised, so macOS and Windows will each want
+    convincing before they run one.</p>
+    <p class="muted small"><strong>iOS.</strong> Not distributed anywhere: open
+    <code>iosApp/iosApp.xcodeproj</code> and run it on your own device.</p>
     <p class="muted small">You still need a relay. That is the next section.</p>
   </div>
 </section>
@@ -402,6 +532,11 @@ adb install -r -g \
         <code>10.0.2.2</code> — inside an emulator, <code>localhost</code> is the emulator itself.</p>
       </div>
     </div>
+    <p class="muted small" style="margin-top:26px">Not a phone? <code>./gradlew
+    :desktopApp:run</code> opens the same interface in a window, and
+    <code>:desktopApp:packageDeb</code> (or <code>packageMsi</code>, <code>packageDmg</code> on
+    their own OS) makes something installable. For iOS, open <code>iosApp/iosApp.xcodeproj</code>
+    in Xcode &mdash; Gradle builds <code>:shared</code> into a framework as part of that build.</p>
     <div class="note" style="margin-top:30px">
       <strong>No server at all?</strong> Turn on <em>Host a relay on this device</em> in Settings.
       That phone runs the relay itself: point it at <code>127.0.0.1</code>, and point the other
@@ -457,11 +592,13 @@ adb install -r -g \
     <div class="cols" style="margin-top:34px; align-items:start">
       <div>
         <h3><a href="https://github.com/devapro/ptt-client-android">ptt-client-android</a></h3>
-        <p class="muted small">Kotlin, MVI, Compose Multiplatform (Android, desktop and iOS), a
-        Glance widget on Android, Koin, Ktor client. One controller owns the connection, the
-        microphone and the speaker; on Android it is hosted by a foreground service, and the
-        screen, the floating bubble and the widget are all observers of a single state flow.</p>
-        <p class="small" style="margin-top:.9em">136 unit tests · 39 Compose UI tests</p>
+        <p class="muted small">Kotlin, MVI, Compose Multiplatform. Four modules
+        &mdash; <code>:shared</code>, the Android <code>:app</code>, <code>:desktopApp</code> and an
+        Xcode project &mdash; plus Koin and the Ktor client. One controller owns the connection, the
+        microphone and the speaker; on Android it is hosted by a foreground service, and the screen,
+        the floating bubble and the Glance widget are all observers of a single state flow.</p>
+        <p class="small" style="margin-top:.9em">136 unit tests, on two targets · 39 Compose UI
+        tests · iOS compiled on every push</p>
       </div>
       <div>
         <h3><a href="https://github.com/devapro/ptt-server">ptt-server</a></h3>
@@ -498,6 +635,7 @@ adb install -r -g \
     <a href="https://github.com/devapro/ptt-client-android">Client</a>
     <a href="https://github.com/devapro/ptt-server">Server</a>
     <a href="https://github.com/devapro/ptt-server/blob/main/docs/protocol.md">Protocol</a>
+    <a href="privacy.html">Privacy</a>
     <a href="https://github.com/devapro/ptt-client-android/blob/main/LICENSE">GPL-3.0</a>
   </nav>
 </footer>

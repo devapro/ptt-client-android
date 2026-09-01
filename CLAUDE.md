@@ -144,10 +144,16 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
   strands the talk floor with the microphone open. See [`docs/known-issues.md`](docs/known-issues.md) #20.
 - **No dynamic colour.** Colour is the readout here, and it has to match on every surface that
   reads `ui/PttUiStatus`.
-- `docs/index.html` is the product landing page. It is served by GitHub Pages **from a workflow**
-  (`.github/workflows/pages.yml`), not from a branch, because the same site also carries the
-  F-Droid repository — a branch-based deployment would delete it. Screenshots in `docs/img/` are
-  real device captures; retake them rather than editing them if the UI changes.
+- `docs/index.html` is the product landing page, and it covers all three platforms, not just
+  Android. It is served by GitHub Pages **from a workflow** (`.github/workflows/pages.yml`), not
+  from a branch, because the same site also carries the F-Droid repository — a branch-based
+  deployment would delete it. Screenshots in `docs/img/` are real device captures; retake them
+  rather than editing them if the UI changes. Its **Platforms** section deliberately duplicates
+  `docs/platform-support.md`'s matrix for a reader who will not open a Markdown file, and its
+  **Hands-free** section is labelled Android for the same reason — change them in the same commit
+  as that table, and keep the page colourless outside the state readout: green/amber/red/blue mean
+  talk-floor states there, exactly as in `ui/PttUiStatus`, and a second meaning for the same colour
+  undoes that.
 - **The default relay lives in `relay.properties`, not in Kotlin.** `defaultRelay` is read at
   build time (via `gradle/relay-defaults.gradle.kts`, shared by `:app`, `:shared` and
   `:desktopApp`) into `:app`'s `BuildConfig.DEFAULT_RELAY_*` and `:shared`'s generated
@@ -172,7 +178,9 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
   `:shared`, is in scope.
 - Keep `docs/` in sync when changing architecture, the action/reducer set, the audio pipeline, the
   wire protocol or DI wiring. `../ptt-server/docs/protocol.md` is the canonical protocol spec —
-  change it first.
+  change it first. A change to what a **platform** can or cannot do also lands in
+  `docs/platform-support.md`, `README.md` and `docs/index.html`, all three: each states the split
+  in its own voice, so none of them can be regenerated from the others.
 - Run the gates before declaring work done:
   ```
   ./gradlew assembleDebug testDebugUnitTest lintDebug
