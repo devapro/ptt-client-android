@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.ServerMode
+import com.github.devapro.pttdroid.data.settings.LanguageMode
 import com.github.devapro.pttdroid.data.settings.ThemeMode
 import com.github.devapro.pttdroid.shared.resources.*
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
@@ -325,5 +326,26 @@ class SettingsScreenTest {
 
         rule.onNodeWithText(string(Res.string.settings_tls_host_conflict))
             .performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun the_language_can_be_forced_independently_of_the_system() {
+        show()
+
+        rule.onNodeWithText(string(Res.string.settings_language_russian)).performScrollTo().performClick()
+        rule.onNodeWithText(string(Res.string.settings_save)).performClick()
+
+        rule.runOnIdle { assertEquals(LanguageMode.RUSSIAN, saved.first().languageMode) }
+    }
+
+    @Test
+    fun the_stored_language_is_the_one_shown_as_selected() {
+        show(AppSettings(languageMode = LanguageMode.SERBIAN))
+
+        rule.onNodeWithText(string(Res.string.settings_language_serbian))
+            .performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(string(Res.string.settings_save)).performClick()
+
+        rule.runOnIdle { assertEquals(LanguageMode.SERBIAN, saved.first().languageMode) }
     }
 }

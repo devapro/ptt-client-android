@@ -1,0 +1,105 @@
+<resources>
+    <string name="app_name">PTTdroid</string>
+
+    <string name="status_disconnected">Van mreže</string>
+    <string name="status_connecting">Povezivanje…</string>
+    <string name="status_ready">Kanal slobodan</string>
+    <string name="status_requesting">Zahtev…</string>
+    <string name="status_transmitting">Na vezi ste</string>
+    <string name="status_receiving">Prijem</string>
+    <string name="status_receiving_from">%1$s govori</string>
+    <string name="someone">Neko</string>
+
+    <string name="ptt_cap_offline">VAN MREŽE</string>
+    <string name="ptt_cap_linking">VEZA</string>
+    <string name="ptt_cap_talk">DRŽI</string>
+    <string name="ptt_cap_wait">ČEKAJ</string>
+    <string name="ptt_cap_on_air">EFIR</string>
+    <string name="ptt_cap_busy">ZAUZETO</string>
+
+    <string name="channel_label">Kanal</string>
+    <string name="settings">Podešavanja</string>
+    <string name="ptt_hold_to_talk">Držite dugme da govorite</string>
+    <string name="ptt_release_to_stop">Pustite da zaustavite</string>
+    <string name="ptt_requesting">Čeka se kanal…</string>
+    <string name="ptt_blocked">Neko drugi govori</string>
+    <string name="ptt_offline">Nema veze sa relej serverom</string>
+    <string name="main_connect">Poveži</string>
+    <string name="main_disconnect">Prekini vezu</string>
+    <plurals name="peers_online">
+        <item quantity="one">%1$d radio na mreži</item>
+        <item quantity="few">%1$d radio na mreži</item>
+        <item quantity="many">%1$d radio na mreži</item>
+        <item quantity="other">%1$d radio na mreži</item>
+    </plurals>
+    <string name="main_channel_number">Kanal %1$d</string>
+
+    <string name="cd_settings">Otvori podešavanja</string>
+    <string name="cd_back">Nazad</string>
+    <string name="cd_ptt_toggle">Prekini prenos</string>
+    <string name="cd_channel_down">Prethodni kanal</string>
+    <string name="cd_channel_up">Sledeći kanal</string>
+    <string name="cd_dismiss_error">Odbaci</string>
+
+    <string name="notification_channel_name">PTT sesija</string>
+    <string name="notification_channel_description">Održava push-to-talk vezu aktivnom</string>
+    <string name="notification_title">PTT · kanal %1$d</string>
+    <string name="action_start_talking">Govori</string>
+    <string name="action_stop_talking">Stani</string>
+    <string name="action_stop_service">Prekini vezu</string>
+
+    <string name="settings_server">Relej</string>
+    <string name="settings_server_caption">Mašina koja pokreće ptt-server, ili ovaj telefon ako sam hostuje.</string>
+    <string name="settings_server_default">Podrazumevano</string>
+    <string name="settings_server_custom">Prilagođeno</string>
+    <string name="settings_server_default_summary">Povezuje se na adresu ugrađenu u aplikaciju. Izaberite Prilagođeno da ciljate svoj relej.</string>
+    <string name="settings_server_url">Adresa servera</string>
+    <string name="settings_server_url_summary">Host, host:port ili ceo URL nalepljen iz loga servera ili tunela.</string>
+    <string name="settings_endpoint">Povezaće se na %1$s</string>
+    <string name="settings_security">Bezbednost</string>
+    <string name="settings_security_caption">Podesite da odgovara releju. Server ispisuje obe vrednosti pri pokretanju.</string>
+    <string name="settings_tls">Šifrovana veza</string>
+    <string name="settings_tls_summary">Poveži se preko wss:// umesto ws://</string>
+    <string name="settings_fingerprint">Otisak sertifikata (SHA-256)</string>
+    <string name="settings_fingerprint_summary">Ostavite prazno ako relej ima javno poverljiv sertifikat, npr. kroz tunel. Za samopotpisan relej nalepite otisak iz loga servera.</string>
+    <string name="settings_tls_host_conflict">Ugrađeni relej radi samo u običnom tekstu. Isključite šifrovanje ili ciljajte relej koji ima sertifikat.</string>
+    <string name="settings_token">Token pristupa</string>
+    <string name="settings_token_summary">Potreban samo ako je relej pokrenut sa tokenom.</string>
+    <string name="settings_show">Prikaži</string>
+    <string name="settings_hide">Sakri</string>
+
+    <string name="settings_identity">Identitet</string>
+    <string name="settings_identity_caption">Vidljivo svima na kanalu dok držite reč.</string>
+    <string name="settings_display_name">Prikazno ime</string>
+    <string name="settings_channel">Kanal (1–99)</string>
+    <string name="settings_appearance">Prikaz</string>
+    <string name="settings_theme_system">Sistemski</string>
+    <string name="settings_theme_light">Svetli</string>
+    <string name="settings_theme_dark">Tamni</string>
+    <string name="settings_language">Jezik</string>
+    <string name="settings_language_system">Sistemski</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_russian">Русский</string>
+    <string name="settings_language_serbian">Srpski</string>
+    <string name="settings_hands_free">Slobodne ruke</string>
+    <string name="settings_floating">Plutajuće PTT dugme</string>
+    <string name="settings_floating_summary">Prikazuje dugme za govor povrh drugih aplikacija koje se može prevlačiti</string>
+    <string name="settings_grant_overlay">Dozvoli „crtanje preko drugih aplikacija”</string>
+    <string name="settings_overlay_required">Potrebna dozvola za prikaz plutajućeg dugmeta</string>
+    <string name="settings_host_server">Hostuj relej na ovom uređaju</string>
+    <string name="settings_host_server_summary">Pokreni server ovde da zasebna mašina ne treba. Drugi se povezuju na IP ovog uređaja na istoj Wi‑Fi mreži.</string>
+    <string name="settings_save">Sačuvaj i ponovo poveži</string>
+    <string name="settings_saved">Podešavanja sačuvana</string>
+
+    <string name="error_host_blank">Unesite adresu releja</string>
+    <string name="error_host_invalid">Nije adresa. Pokušajte nešto poput relay.local:8000</string>
+    <string name="error_host_credentials">Izvadite korisničko ime iz adrese — koristite token pristupa ispod</string>
+    <string name="error_port_invalid">Port mora biti između 1 i 65535</string>
+    <string name="error_channel_invalid">Kanal mora biti između 1 i 99</string>
+    <string name="error_name_too_long">Ime mora biti najviše 32 znaka</string>
+    <string name="error_fingerprint_invalid">SHA-256 otisak je 64 heksadecimalna znaka, sa dvotačkama ili bez</string>
+    <string name="error_token_too_long">Token mora biti najviše 128 znakova</string>
+
+    <string name="permission_mic_required">Za govor je potreban pristup mikrofonu</string>
+    <string name="permission_grant">Dozvoli pristup mikrofonu</string>
+</resources>

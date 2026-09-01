@@ -32,6 +32,7 @@ import com.github.devapro.pttdroid.model.ScreenState
 import com.github.devapro.pttdroid.overlay.OverlayController
 import com.github.devapro.pttdroid.ui.MainScreen
 import com.github.devapro.pttdroid.ui.SettingsScreen
+import com.github.devapro.pttdroid.ui.AppLocale
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
 import com.github.devapro.pttdroid.viewmodel.MainActivityViewModel
 import kotlinx.coroutines.flow.first
@@ -75,22 +76,24 @@ class MainActivity : ComponentActivity() {
             val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
             var overlayGranted by remember { mutableStateOf(canDrawOverlays()) }
 
-            PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
-                when (state.screen) {
-                    ScreenState.Screen.Main -> MainScreen(
-                        state = state,
-                        endpoint = "${settings.serverHost}:${settings.serverPort}",
-                        snackbarHostState = snackbarHostState,
-                        onAction = viewModel::onAction,
-                    )
+            AppLocale(settings.languageMode) {
+                PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
+                    when (state.screen) {
+                        ScreenState.Screen.Main -> MainScreen(
+                            state = state,
+                            endpoint = "${settings.serverHost}:${settings.serverPort}",
+                            snackbarHostState = snackbarHostState,
+                            onAction = viewModel::onAction,
+                        )
 
-                    ScreenState.Screen.Settings -> SettingsScreen(
-                        settings = settings,
-                        canDrawOverlay = overlayGranted,
-                        onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
-                        onRequestOverlayPermission = { requestOverlayPermission() },
-                        onBack = { viewModel.onAction(MainAction.CloseSettings) },
-                    )
+                        ScreenState.Screen.Settings -> SettingsScreen(
+                            settings = settings,
+                            canDrawOverlay = overlayGranted,
+                            onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
+                            onRequestOverlayPermission = { requestOverlayPermission() },
+                            onBack = { viewModel.onAction(MainAction.CloseSettings) },
+                        )
+                    }
                 }
             }
 

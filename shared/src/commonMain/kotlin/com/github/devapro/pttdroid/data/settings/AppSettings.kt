@@ -22,6 +22,8 @@ data class AppSettings(
     val displayName: String = DEFAULT_NAME,
     val floatingButtonEnabled: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    /** UI language, independent of the system locale. See [LanguageMode]. */
+    val languageMode: LanguageMode = LanguageMode.SYSTEM,
     /** Run an on-device relay so no separate server is needed on a LAN. */
     val hostServerEnabled: Boolean = false,
     /** `wss://` instead of `ws://`. */

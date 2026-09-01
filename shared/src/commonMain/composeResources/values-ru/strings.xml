@@ -1,0 +1,105 @@
+<resources>
+    <string name="app_name">PTTdroid</string>
+
+    <string name="status_disconnected">Не в сети</string>
+    <string name="status_connecting">Подключение…</string>
+    <string name="status_ready">Канал свободен</string>
+    <string name="status_requesting">Запрос…</string>
+    <string name="status_transmitting">Вы в эфире</string>
+    <string name="status_receiving">Приём</string>
+    <string name="status_receiving_from">%1$s говорит</string>
+    <string name="someone">Кто-то</string>
+
+    <string name="ptt_cap_offline">ОФЛАЙН</string>
+    <string name="ptt_cap_linking">СВЯЗЬ</string>
+    <string name="ptt_cap_talk">ЖМИ</string>
+    <string name="ptt_cap_wait">ЖДИ</string>
+    <string name="ptt_cap_on_air">ЭФИР</string>
+    <string name="ptt_cap_busy">ЗАНЯТО</string>
+
+    <string name="channel_label">Канал</string>
+    <string name="settings">Настройки</string>
+    <string name="ptt_hold_to_talk">Удерживайте кнопку, чтобы говорить</string>
+    <string name="ptt_release_to_stop">Отпустите, чтобы остановить</string>
+    <string name="ptt_requesting">Ожидание канала…</string>
+    <string name="ptt_blocked">Кто-то другой говорит</string>
+    <string name="ptt_offline">Нет подключения к ретранслятору</string>
+    <string name="main_connect">Подключиться</string>
+    <string name="main_disconnect">Отключиться</string>
+    <plurals name="peers_online">
+        <item quantity="one">%1$d рация в сети</item>
+        <item quantity="few">%1$d рации в сети</item>
+        <item quantity="many">%1$d раций в сети</item>
+        <item quantity="other">%1$d рации в сети</item>
+    </plurals>
+    <string name="main_channel_number">Канал %1$d</string>
+
+    <string name="cd_settings">Открыть настройки</string>
+    <string name="cd_back">Назад</string>
+    <string name="cd_ptt_toggle">Переключить передачу</string>
+    <string name="cd_channel_down">Предыдущий канал</string>
+    <string name="cd_channel_up">Следующий канал</string>
+    <string name="cd_dismiss_error">Закрыть</string>
+
+    <string name="notification_channel_name">Сеанс PTT</string>
+    <string name="notification_channel_description">Поддерживает активное push-to-talk-соединение</string>
+    <string name="notification_title">PTT · канал %1$d</string>
+    <string name="action_start_talking">Говорить</string>
+    <string name="action_stop_talking">Стоп</string>
+    <string name="action_stop_service">Отключиться</string>
+
+    <string name="settings_server">Ретранслятор</string>
+    <string name="settings_server_caption">Машина с ptt-server или это устройство, если оно само хостит сервер.</string>
+    <string name="settings_server_default">По умолчанию</string>
+    <string name="settings_server_custom">Свой</string>
+    <string name="settings_server_default_summary">Подключается к адресу, зашитому в приложение. Выберите «Свой», чтобы указать свой ретранслятор.</string>
+    <string name="settings_server_url">Адрес сервера</string>
+    <string name="settings_server_url_summary">Хост, хост:порт или полный URL из журнала сервера или туннеля.</string>
+    <string name="settings_endpoint">Подключится к %1$s</string>
+    <string name="settings_security">Безопасность</string>
+    <string name="settings_security_caption">Настройте в соответствии с ретранслятором. Сервер печатает оба значения при запуске.</string>
+    <string name="settings_tls">Шифрованное соединение</string>
+    <string name="settings_tls_summary">Подключаться по wss:// вместо ws://</string>
+    <string name="settings_fingerprint">Отпечаток сертификата (SHA-256)</string>
+    <string name="settings_fingerprint_summary">Оставьте пустым, если у ретранслятора публичный доверенный сертификат, например через туннель. Для самоподписанного ретранслятора вставьте отпечаток из журнала сервера.</string>
+    <string name="settings_tls_host_conflict">Встроенный ретранслятор работает только по открытому тексту. Отключите шифрование или укажите ретранслятор с сертификатом.</string>
+    <string name="settings_token">Токен доступа</string>
+    <string name="settings_token_summary">Нужен, только если ретранслятор запущен с токеном.</string>
+    <string name="settings_show">Показать</string>
+    <string name="settings_hide">Скрыть</string>
+
+    <string name="settings_identity">Имя</string>
+    <string name="settings_identity_caption">Видно всем в канале, пока вы держите эфир.</string>
+    <string name="settings_display_name">Отображаемое имя</string>
+    <string name="settings_channel">Канал (1–99)</string>
+    <string name="settings_appearance">Оформление</string>
+    <string name="settings_theme_system">Системная</string>
+    <string name="settings_theme_light">Светлая</string>
+    <string name="settings_theme_dark">Тёмная</string>
+    <string name="settings_language">Язык</string>
+    <string name="settings_language_system">Системный</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_russian">Русский</string>
+    <string name="settings_language_serbian">Srpski</string>
+    <string name="settings_hands_free">Свободные руки</string>
+    <string name="settings_floating">Плавающая кнопка PTT</string>
+    <string name="settings_floating_summary">Показывать перетаскиваемую кнопку разговора поверх других приложений</string>
+    <string name="settings_grant_overlay">Разрешить «отрисовку поверх других приложений»</string>
+    <string name="settings_overlay_required">Требуется разрешение для показа плавающей кнопки</string>
+    <string name="settings_host_server">Хостить ретранслятор на устройстве</string>
+    <string name="settings_host_server_summary">Запустить сервер здесь, чтобы отдельная машина не понадобилась. Другие подключаются к IP этого устройства в той же Wi‑Fi-сети.</string>
+    <string name="settings_save">Сохранить и переподключиться</string>
+    <string name="settings_saved">Настройки сохранены</string>
+
+    <string name="error_host_blank">Введите адрес ретранслятора</string>
+    <string name="error_host_invalid">Не адрес. Попробуйте что-то вроде relay.local:8000</string>
+    <string name="error_host_credentials">Уберите имя пользователя из адреса — используйте токен доступа ниже</string>
+    <string name="error_port_invalid">Порт должен быть от 1 до 65535</string>
+    <string name="error_channel_invalid">Канал должен быть от 1 до 99</string>
+    <string name="error_name_too_long">Имя не длиннее 32 символов</string>
+    <string name="error_fingerprint_invalid">Отпечаток SHA-256 — это 64 шестнадцатеричных символа, с двоеточиями или без</string>
+    <string name="error_token_too_long">Токен не длиннее 128 символов</string>
+
+    <string name="permission_mic_required">Для разговора нужен доступ к микрофону</string>
+    <string name="permission_grant">Разрешить доступ к микрофону</string>
+</resources>

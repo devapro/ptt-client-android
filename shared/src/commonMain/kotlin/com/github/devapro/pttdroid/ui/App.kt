@@ -17,6 +17,7 @@ import com.github.devapro.pttdroid.viewmodel.MainActivityViewModel
 import org.jetbrains.compose.resources.getString
 import org.koin.compose.koinInject
 
+
 /**
  * The shared UI root, hosted by [MainViewController] (`MainViewController.kt`, iosMain) via
  * `ComposeUIViewController`.
@@ -60,26 +61,28 @@ fun App() {
         }
     }
 
-    PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
-        when (state.screen) {
-            ScreenState.Screen.Main -> MainScreen(
-                state = state,
-                endpoint = "${settings.serverHost}:${settings.serverPort}",
-                snackbarHostState = snackbarHostState,
-                onAction = viewModel::onAction,
-            )
+    AppLocale(settings.languageMode) {
+        PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
+            when (state.screen) {
+                ScreenState.Screen.Main -> MainScreen(
+                    state = state,
+                    endpoint = "${settings.serverHost}:${settings.serverPort}",
+                    snackbarHostState = snackbarHostState,
+                    onAction = viewModel::onAction,
+                )
 
-            ScreenState.Screen.Settings -> SettingsScreen(
-                settings = settings,
-                // No "draw over other apps" concept on iOS, same as desktop's Main.kt.
-                canDrawOverlay = true,
-                onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
-                onRequestOverlayPermission = {},
-                onBack = { viewModel.onAction(MainAction.CloseSettings) },
-                // canHostRelay defaults to this platform's own domain.canHostRelay (false on
-                // iOS), so the row is already hidden without passing it explicitly — spelled out
-                // anyway here since this is the one call site Phase 7a added on purpose.
-            )
+                ScreenState.Screen.Settings -> SettingsScreen(
+                    settings = settings,
+                    // No "draw over other apps" concept on iOS, same as desktop's Main.kt.
+                    canDrawOverlay = true,
+                    onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
+                    onRequestOverlayPermission = {},
+                    onBack = { viewModel.onAction(MainAction.CloseSettings) },
+                    // canHostRelay defaults to this platform's own domain.canHostRelay (false on
+                    // iOS), so the row is already hidden without passing it explicitly — spelled
+                    // out anyway here since this is the one call site Phase 7a added on purpose.
+                )
+            }
         }
     }
 }

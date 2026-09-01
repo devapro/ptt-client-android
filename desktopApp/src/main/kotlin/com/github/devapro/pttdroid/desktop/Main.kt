@@ -17,6 +17,7 @@ import com.github.devapro.pttdroid.model.MainEvent
 import com.github.devapro.pttdroid.model.ScreenState
 import com.github.devapro.pttdroid.ui.MainScreen
 import com.github.devapro.pttdroid.ui.SettingsScreen
+import com.github.devapro.pttdroid.ui.AppLocale
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
 import com.github.devapro.pttdroid.viewmodel.MainActivityViewModel
 import org.jetbrains.compose.resources.getString
@@ -73,24 +74,26 @@ fun main() {
                 }
             }
 
-            PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
-                when (state.screen) {
-                    ScreenState.Screen.Main -> MainScreen(
-                        state = state,
-                        endpoint = "${settings.serverHost}:${settings.serverPort}",
-                        snackbarHostState = snackbarHostState,
-                        onAction = viewModel::onAction,
-                    )
+            AppLocale(settings.languageMode) {
+                PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
+                    when (state.screen) {
+                        ScreenState.Screen.Main -> MainScreen(
+                            state = state,
+                            endpoint = "${settings.serverHost}:${settings.serverPort}",
+                            snackbarHostState = snackbarHostState,
+                            onAction = viewModel::onAction,
+                        )
 
-                    ScreenState.Screen.Settings -> SettingsScreen(
-                        settings = settings,
-                        // No overlay/"draw over other apps" concept on desktop; the floating-
-                        // bubble toggle in Settings just has nothing left to require.
-                        canDrawOverlay = true,
-                        onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
-                        onRequestOverlayPermission = {},
-                        onBack = { viewModel.onAction(MainAction.CloseSettings) },
-                    )
+                        ScreenState.Screen.Settings -> SettingsScreen(
+                            settings = settings,
+                            // No overlay/"draw over other apps" concept on desktop; the floating-
+                            // bubble toggle in Settings just has nothing left to require.
+                            canDrawOverlay = true,
+                            onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
+                            onRequestOverlayPermission = {},
+                            onBack = { viewModel.onAction(MainAction.CloseSettings) },
+                        )
+                    }
                 }
             }
         }

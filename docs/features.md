@@ -47,7 +47,11 @@ a snackbar.
 - **Channel** — 1..99.
 - **Appearance** — System / Light / Dark. The app follows the system by default, but a radio gets
   pulled out at night on a phone whose owner has never touched the system theme, so it can be
-  forced per-app.
+  forced per-app. Under the same card, **Language** — System / English / Русский / Srpski —
+  overrides the UI language the same way. The labels are each language's own endonym so a user
+  picks theirs regardless of the current UI language. (The Android notification and the Glance
+  widget still follow the system locale: there is no Compose Multiplatform API yet to set a
+  process-wide resource locale, so the override only reaches the Compose tree.)
 - **Hands-free** — the floating PTT button toggle, with a hand-off to the system "draw over other
   apps" screen when the permission is missing, and **Host a relay on this device**, which runs the
   server in-app so no separate machine is needed.

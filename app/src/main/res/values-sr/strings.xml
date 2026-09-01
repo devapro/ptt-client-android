@@ -1,0 +1,5 @@
+<resources>
+    <!-- app_name is the brand; kept identical across locales. -->
+    <string name="app_name">PTTdroid</string>
+    <string name="widget_description">Статус push-to-talk и прекидач преноса</string>
+</resources>
