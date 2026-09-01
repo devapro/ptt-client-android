@@ -1,0 +1,114 @@
+// Gradle init script — applied automatically inside the linux/arm64 omp
+// container (entrypoint.sh links it into $GRADLE_USER_HOME/init.d).
+//
+// WHY
+// Robolectric does not publish a native runtime for Linux on aarch64. Its
+// nativeruntime-dist-compat jar ships exactly four builds:
+//
+//     native/linux/x86_64/librobolectric-nativeruntime.so
+//     native/mac/aarch64/librobolectric-nativeruntime.dylib
+//     native/mac/x86_64/librobolectric-nativeruntime.dylib
+//     native/windows/x86_64/robolectric-nativeruntime.dll
+//
+// and DefaultNativeRuntimeLoader accepts "aarch64" only when the OS is mac.
+// So on linux/aarch64 every Robolectric test that touches a View fails with
+//
+//     AssertionError: The Robolectric native runtime is not supported on Linux (aarch64)
+//
+// This is an upstream platform gap, not a project defect: the same tests pass on
+// macOS arm64, on Linux x86_64, and in amd64 containers.
+//
+// WHAT THIS DOES
+// On linux/aarch64 only, excludes every test class in a file that declares
+// `@RunWith(RobolectricTestRunner::class)`, so `testDebugUnitTest` reports a
+// truthful pass/fail for the tests that CAN run here, instead of a build
+// failure mixing real problems with a platform limitation.
+//
+// It also disables up-to-date checks for Test tasks: `build/` is bind-mounted
+// and shared with the host, and Gradle's up-to-date key does not include OS or
+// architecture — so results produced on the host would otherwise satisfy a
+// test task in here (and vice versa) without anything actually running.
+//
+// Robolectric tests are NOT skipped silently: the excluded count is logged,
+// and they must still be run elsewhere — on the macOS host, or in CI.
+
+def isLinuxAarch64 = System.getProperty('os.name').toLowerCase().contains('linux') &&
+        System.getProperty('os.arch') in ['aarch64', 'arm64']
+
+if (isLinuxAarch64) {
+    // Every Robolectric test in this repo declares the runner explicitly.
+    // Class names are read from the source rather than derived from the
+    // filename, because some files declare a differently-named class (and
+    // some declare test helpers alongside the test class; excluding a helper
+    // is harmless, the pattern simply matches no test).
+    def packagePattern = ~/(?m)^package\s+([\w.]+)/
+    def classPattern = ~/(?m)^(?:internal\s+|private\s+|public\s+|open\s+|abstract\s+)*class\s+(\w+)/
+
+    def collectRobolectricClasses = { File testSourceRoot ->
+        def names = []
+        if (!testSourceRoot.isDirectory()) {
+            return names
+        }
+        testSourceRoot.eachFileRecurse { File file ->
+            if (!file.isFile() || !file.name.endsWith('.kt')) {
+                return
+            }
+            def source = file.getText('UTF-8')
+            if (!source.contains('RobolectricTestRunner')) {
+                return
+            }
+            def packageMatch = packagePattern.matcher(source)
+            if (!packageMatch.find()) {
+                return
+            }
+            def packageName = packageMatch.group(1)
+            def classMatch = classPattern.matcher(source)
+            while (classMatch.find()) {
+                names << "${packageName}.${classMatch.group(1)}"
+            }
+        }
+        return names
+    }
+
+    allprojects { project ->
+        def projectPath = project.path
+
+        project.tasks.withType(Test).configureEach { testTask ->
+            // See the note above: shared build/ dir + arch-blind up-to-date checks.
+            // doNotTrackState is used rather than outputs.upToDateWhen { false }
+            // because the latter takes a closure, which the configuration cache
+            // cannot serialize here (it captures the enclosing Project).
+            testTask.doNotTrackState(
+                    'build/ is shared with the host over a bind mount and Gradle\'s ' +
+                    'up-to-date key ignores OS/arch, so results from another ' +
+                    'environment must not satisfy this task.')
+
+            def excluded = []
+            ['test', 'testDebug'].each { sourceSetName ->
+                excluded.addAll(collectRobolectricClasses(
+                        project.file("src/${sourceSetName}/kotlin")))
+                excluded.addAll(collectRobolectricClasses(
+                        project.file("src/${sourceSetName}/java")))
+            }
+            excluded = excluded.unique()
+
+            if (!excluded.isEmpty()) {
+                excluded.each { className ->
+                    testTask.filter.excludeTestsMatching(className)
+                }
+                // excludeTestsMatching with no surviving test would fail the task.
+                testTask.filter.failOnNoMatchingTests = false
+
+                // The message is built here, at configuration time, so the doFirst
+                // closure captures only a String. Logging via `t.logger` rather than
+                // a bare `logger` matters: the latter resolves against the enclosing
+                // Project, which the configuration cache cannot serialize.
+                def skipMessage = "[linux/aarch64] Skipping ${excluded.size()} Robolectric " +
+                        "test class(es) in ${projectPath}: Robolectric ships no native " +
+                        "runtime for this platform. NOT VERIFIED HERE — run them on the " +
+                        "macOS host or in CI."
+                testTask.doFirst { Task t -> t.logger.lifecycle(skipMessage) }
+            }
+        }
+    }
+}

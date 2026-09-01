@@ -1,0 +1,155 @@
+# docker/docker-compose.omp.yml
+# Slim Oh My Pi (omp) stack for this Android repo.
+#
+# It builds the project's Android/Java/Node toolchain image, installs `omp` on
+# first start via the official installer, and persists omp plus build caches in
+# named volumes. No Android emulator is started; use the host ADB bridge if a
+# connected device/emulator is needed.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.omp.yml run --rm omp
+#   docker compose -f docker/docker-compose.omp.yml run --rm omp --help
+#   ./docker/start.sh                       # wraps the above with .env loading
+#
+# Optional env vars, usually set in docker/.env:
+#   OMP_ARCH=arm64|amd64
+#   OMP_CPUS=8
+#   OMP_MEM_LIMIT=32g
+#   OMP_DOCKER_HOME=/path/to/host/.omp       # share host omp provider logins
+#   OMP_LOCAL_VOLUME=omp-local-arm64
+#   OMP_GRADLE_CACHE_VOLUME=omp-gradle-cache-arm64
+
+services:
+  omp:
+    container_name: oh-my-pi
+    platform: linux/${OMP_ARCH:-amd64}
+    build:
+      context: .
+      platforms:
+        - linux/${OMP_ARCH:-amd64}
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    image: ptt-omp:local-${OMP_ARCH:-amd64}
+    cpus: ${OMP_CPUS:-0}
+    mem_limit: ${OMP_MEM_LIMIT:-0}
+    environment:
+      # omp supports many providers; pass through the common direct API keys
+      # when present, while persisted OAuth/config lives under /home/node/.omp.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      EXA_API_KEY: ${EXA_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      TERM: ${TERM:-xterm-256color}
+      TERM_PROGRAM: ${TERM_PROGRAM:-}
+      TERM_PROGRAM_VERSION: ${TERM_PROGRAM_VERSION:-}
+      COLORTERM: ${COLORTERM:-}
+      LC_TERMINAL: ${LC_TERMINAL:-}
+      LC_TERMINAL_VERSION: ${LC_TERMINAL_VERSION:-}
+      OMP_JVM_HEAP: ${OMP_JVM_HEAP:-4g}
+      OMP_JVM_METASPACE: ${OMP_JVM_METASPACE:-768m}
+      OMP_GRADLE_WORKERS: ${OMP_GRADLE_WORKERS:-}
+      # Port 5038 = the adb-proxy sidecar (Linux), 5037 = direct (macOS, where
+      # `adb -a` can bind 0.0.0.0). start.sh --with-adb sets ADB_PORT and starts
+      # the proxy; without it the entrypoint probe just reports unreachable.
+      ADB_SERVER_SOCKET: tcp:${ADB_HOST_GATEWAY:-host.docker.internal}:${ADB_PORT:-5038}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../:/workspace
+      - ${OMP_DOCKER_HOME:-omp-home}:/home/node/.omp
+      - ${GH_CONFIG_HOME:-gh-config}:/home/node/.config/gh
+      - ${OMP_GRADLE_CACHE_VOLUME:-omp-gradle-cache}:/home/node/.gradle
+      - omp-android-cache:/home/node/.android
+      - ${OMP_LOCAL_VOLUME:-omp-local}:/home/node/.local
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    entrypoint:
+      - /usr/bin/tini
+      - --
+      - /bin/bash
+      - -lc
+      - |
+        set -euo pipefail
+
+        # bash -lc is a login shell: Debian's /etc/profile resets PATH and wipes
+        # the Dockerfile's ENV PATH additions for the Android SDK, so re-export
+        # it here (adb lives at $ANDROID_HOME/platform-tools/adb). ENV vars like
+        # ANDROID_HOME survive the login-shell reset; only PATH does not.
+        export PATH="$${HOME}/.local/bin:$${ANDROID_HOME}/cmdline-tools/latest/bin:$${ANDROID_HOME}/platform-tools:$${PATH}"
+
+        : "$${OMP_JVM_HEAP:=4g}"
+        : "$${OMP_JVM_METASPACE:=768m}"
+        if [ -z "$${_JAVA_OPTIONS:-}" ]; then
+          export _JAVA_OPTIONS="-Xmx$${OMP_JVM_HEAP} -XX:MaxMetaspaceSize=$${OMP_JVM_METASPACE}"
+        fi
+
+        if [ -n "$${OMP_GRADLE_WORKERS:-}" ]; then
+          export GRADLE_OPTS="$${GRADLE_OPTS:+$${GRADLE_OPTS} }-Dorg.gradle.workers.max=$${OMP_GRADLE_WORKERS}"
+        fi
+
+        if [ "$$(uname -m)" = "aarch64" ] || [ "$$(uname -m)" = "arm64" ]; then
+          mkdir -p "$${GRADLE_USER_HOME}/init.d"
+          if [ -f /opt/gradle-init/skip-robolectric.gradle ]; then
+            ln -sf /opt/gradle-init/skip-robolectric.gradle "$${GRADLE_USER_HOME}/init.d/skip-robolectric.gradle"
+          fi
+        fi
+
+        # --- Host ADB bridge ---------------------------------------------------
+        # ADB_SERVER_SOCKET points the container's `adb` client at the host's
+        # adb server. The host adb server binds 127.0.0.1 only (recent adb
+        # refuses non-loopback binds with "listening on specified hostname
+        # currently unsupported"), so on Linux `./docker/start.sh --with-adb`
+        # starts an `adb-proxy` sidecar (socat, host network) forwarding
+        # 0.0.0.0:5038 -> 127.0.0.1:5037, and sets ADB_PORT=5038. On macOS,
+        # `adb -a` can bind 0.0.0.0 and ADB_PORT=5037 is used directly.
+        # Best-effort: if unreachable, print a hint and continue (no emulator
+        # is fine for unit tests / lint / assemble).
+        if [ -n "$${ADB_SERVER_SOCKET:-}" ] && command -v adb >/dev/null 2>&1; then
+          echo "[entrypoint] Probing host ADB at $${ADB_SERVER_SOCKET} ..."
+          if timeout 5 adb devices 2>/dev/null | grep -qE '^[0-9A-Za-z_-]+\s+(device|offline|unauthorized)'; then
+            echo "[entrypoint] Host ADB reachable. Devices:"
+            timeout 5 adb devices | sed 's/^/  /'
+          else
+            echo "[entrypoint] Host ADB not reachable at $${ADB_SERVER_SOCKET}."
+            echo "[entrypoint] To use a host emulator/device, run: ./docker/start.sh --with-adb"
+          fi
+        fi
+
+        if ! command -v omp >/dev/null 2>&1; then
+          curl -fsSL https://omp.sh/install | sh
+        fi
+
+        exec omp "$$@"
+      - omp-entrypoint
+
+  # Host ADB bridge sidecar (Linux). The host adb server binds 127.0.0.1 only,
+  # so this socat proxy exposes it on 0.0.0.0:5038 for the omp container to
+  # reach via host.docker.internal. start.sh --with-adb starts it with
+  # `docker compose up -d adb-proxy`. No-op on macOS, where `adb -a` binds
+  # 0.0.0.0 directly and ADB_PORT=5037 is used instead.
+  adb-proxy:
+    image: alpine/socat:latest
+    network_mode: host
+    command: ["-d", "-d", "TCP-LISTEN:5038,bind=0.0.0.0,fork,reuseaddr", "TCP:127.0.0.1:5037"]
+    restart: "no"
+    profiles: ["adb"]
+
+volumes:
+  omp-home:
+  omp-local:
+  omp-gradle-cache:
+  omp-android-cache:
+  gh-config:
