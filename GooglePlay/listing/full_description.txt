@@ -1,0 +1,39 @@
+PTTdroid turns a phone into a walkie-talkie for a group that already has a network. You run the relay; the audio does not pass through anyone else's servers, and there is no account to create.
+
+Hold the button, talk, let go. The relay arbitrates the channel, so exactly one person is on air at a time - press while somebody else is talking and the app tells you, instead of two people transmitting into the same silence.
+
+The interface is built for the way a radio is actually used: one-handed, in motion, often without looking. Every state is a colour and a single word, and the same colour means the same thing on the main screen, on the floating button, in the widget and in the notification. Green means the channel is yours. Red means you are on air. Blue means somebody else has the floor.
+
+<b>What it does</b>
+
+• Push-to-talk over your own WebSocket relay, on channels 1 to 99
+• A server-arbitrated talk floor - one talker per channel, never two
+• Each radio has a name, so you can see who is holding the channel
+• Keeps talking with the screen off, or while you are in another app, through a microphone foreground service
+• A draggable floating button that shows the channel number and doubles as the transmit control
+• A home-screen widget for transmit, status and channel
+• Talk and Disconnect straight from the ongoing notification
+• Light, dark, or follow the system
+• Laid out for phones and tablets alike
+• Optional encryption: connect over wss://, trusting a self-hosted relay by its certificate fingerprint, with an optional shared access token
+• Can host the relay on the device itself, so a group on one Wi-Fi needs no separate machine at all
+
+<b>You need a relay</b>
+
+PTTdroid talks to ptt-server, a companion open-source project: a single Kotlin/Ktor process with no database and no state to back up. It runs with one Docker command and can generate its own TLS certificate on first boot. Point the app at it under Settings, or switch on "Host a relay on this device" and let one handset be the server for everyone on the same Wi-Fi.
+
+<b>What it does not do</b>
+
+There are no accounts, no message history, no text chat and no audio compression - it is raw 16 kHz mono PCM, which is fine on a LAN and wasteful over a metered connection. The access token is one shared secret for the whole channel: there are no per-handset credentials and no way to revoke a single device. This is a tool for a group that trusts each other and controls its own infrastructure, not a consumer messenger.
+
+<b>Private by construction</b>
+
+No analytics, no advertising, no third-party trackers and no Google Play services. Audio travels from your phone to your relay and on to the other radios on your channel, and nowhere else.
+
+The app asks for the microphone, and for notifications so the running session can be shown. The floating button additionally needs "display over other apps", which you are free to leave switched off - everything else works without it.
+
+<b>Open source</b>
+
+Released under the GNU General Public License v3.0 and built with Kotlin and Compose Multiplatform, from a codebase shared with the desktop and iOS builds. Source, issue tracker and the companion server:
+
+github.com/devapro/ptt-client-android
