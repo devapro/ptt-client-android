@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy — PTTdroid</title>
+<meta name="description" content="PTTdroid collects nothing. Settings stay on your device, audio goes only to the relay you point the app at, and there are no analytics, adverts or third-party SDKs.">
+<meta property="og:title" content="PTTdroid — privacy policy">
+<meta property="og:description" content="No accounts, no analytics, no adverts. Your audio goes to the relay you choose and nowhere else.">
+<meta property="og:type" content="website">
+<link rel="icon" href="img/bubble.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Expanded:wght@700;800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* ------------------------------------------------------------------ tokens */
+/* Copied verbatim from index.html. The two pages are separate files on
+   purpose — this one is served as a stable URL that a store listing points at,
+   and must not break if the landing page is restyled — but the palette has to
+   stay identical, so change both together.
+
+   As on index.html and in the app itself: green, amber, red, blue and slate
+   mean talk-floor states and nothing else, so this page uses none of them
+   decoratively. */
+:root{
+  --ground:#0A0E13; --panel:#121A23; --panel-2:#18222D; --edge:#26333F;
+  --text:#E8EFF5; --muted:#8FA1B2; --faint:#5C6C7C;
+  --green:#22C55E; --red:#EF4444;
+  --accent:var(--green);
+  --shadow:0 30px 70px rgba(0,0,0,.6);
+  --rail:150px;
+}
+:root[data-theme="light"]{
+  --ground:#F2F5F8; --panel:#FFFFFF; --panel-2:#E9EFF4; --edge:#C9D5DF;
+  --text:#0E151C; --muted:#516272; --faint:#7C8B99;
+  --green:#15803D; --red:#B91C1C;
+  --accent:var(--green);
+  --shadow:0 24px 50px rgba(15,30,45,.14);
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --ground:#F2F5F8; --panel:#FFFFFF; --panel-2:#E9EFF4; --edge:#C9D5DF;
+    --text:#0E151C; --muted:#516272; --faint:#7C8B99;
+    --green:#15803D; --red:#B91C1C;
+    --accent:var(--green);
+    --shadow:0 24px 50px rgba(15,30,45,.14);
+  }
+}
+
+/* ------------------------------------------------------------------- base */
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--text);
+  font-family:"IBM Plex Sans","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:16.5px; line-height:1.65; -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent); text-decoration:none}
+a:hover{text-decoration:underline; text-underline-offset:3px}
+a:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:2px}
+p{margin:0 0 1.05em; max-width:68ch}
+p:last-child{margin-bottom:0}
+
+h1,h2{
+  font-family:"Archivo Expanded",Archivo,"Helvetica Neue",Arial,sans-serif;
+  font-weight:800; letter-spacing:-.015em; line-height:1.04;
+  text-wrap:balance; margin:0 0 .45em;
+}
+h1{font-size:clamp(2.3rem,6vw,3.9rem); text-transform:uppercase}
+h2{font-size:clamp(1.35rem,3vw,1.9rem); text-transform:uppercase}
+h3{
+  font-family:"IBM Plex Sans",sans-serif; font-weight:600; font-size:1.02rem;
+  margin:1.6em 0 .5em; letter-spacing:-.005em;
+}
+h3:first-child{margin-top:0}
+
+.label{
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  font-weight:600; font-size:.7rem; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--faint);
+}
+.wrap{max-width:1040px; margin:0 auto; padding:0 28px}
+.panel{
+  display:grid; grid-template-columns:var(--rail) minmax(0,1fr); gap:0 40px;
+  padding:60px 0; border-top:1px solid var(--edge);
+}
+.panel > .label{padding-top:.5rem}
+
+.kicker{
+  display:inline-flex; align-items:center; gap:.6rem; margin-bottom:1.5rem;
+  font-family:"IBM Plex Mono",monospace; font-size:.72rem; font-weight:600;
+  letter-spacing:.18em; text-transform:uppercase; color:var(--muted);
+}
+.kicker .led{
+  width:.5rem; height:.5rem; border-radius:50%; background:var(--green);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--green) 22%, transparent);
+}
+header.hero{padding:80px 0 60px}
+.lede{font-size:clamp(1.02rem,2vw,1.2rem); color:var(--muted); max-width:58ch}
+.stamp{
+  margin-top:2rem; font-family:"IBM Plex Mono",monospace; font-size:.78rem;
+  letter-spacing:.08em; color:var(--faint); text-transform:uppercase;
+}
+
+.note{
+  border:1px solid var(--edge); border-radius:4px; padding:18px 22px;
+  background:var(--panel); color:var(--muted); font-size:.94rem;
+}
+.note.warn{border-color:color-mix(in srgb, var(--red) 45%, var(--edge))}
+.note strong{color:var(--text)}
+.muted{color:var(--muted)}
+.muted strong{color:var(--text); font-weight:600}
+.small{font-size:.9rem}
+code{
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  font-size:.88em; color:var(--text);
+}
+ul.tight{margin:0 0 1.05em; padding-left:1.15rem; color:var(--muted); font-size:.96rem; max-width:68ch}
+ul.tight li{margin-bottom:.5em}
+ul.tight li:last-child{margin-bottom:0}
+ul.tight strong{color:var(--text); font-weight:600}
+
+table{border-collapse:collapse; width:100%; margin:0 0 1.05em; font-size:.93rem}
+th,td{text-align:left; vertical-align:top; padding:11px 14px; border-bottom:1px solid var(--edge)}
+th{
+  font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:.7rem;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--faint);
+}
+td{color:var(--muted)}
+td:first-child{color:var(--text); white-space:nowrap}
+td code{white-space:nowrap}
+.scroll{overflow-x:auto}
+
+footer{padding:56px 0 88px; border-top:1px solid var(--edge)}
+.footlinks{
+  display:flex; gap:26px; flex-wrap:wrap; margin-top:26px;
+  font-family:"IBM Plex Mono",monospace; font-size:.8rem; letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+@media (max-width:900px){
+  header.hero{padding:56px 0 44px}
+  .panel{grid-template-columns:1fr; gap:18px; padding:48px 0}
+  .panel > .label{padding-top:0}
+  td:first-child{white-space:normal}
+}
+</style>
+</head>
+<body>
+
+<header class="wrap hero">
+  <span class="kicker"><span class="led"></span>PTTdroid · privacy policy</span>
+  <h1>Nothing<br>comes back</h1>
+  <p class="lede">
+    PTTdroid has no accounts, no servers of ours that you have to use, and no analytics. Your
+    settings stay on your device, and your voice goes to the relay you point the app at — and
+    nowhere else.
+  </p>
+  <p class="stamp">Last updated 31 August 2026 · applies to PTTdroid 1.0.0 and later</p>
+</header>
+
+<main>
+
+<section class="wrap panel">
+  <p class="label">Summary</p>
+  <div>
+    <h2>The short version</h2>
+    <ul class="tight">
+      <li><strong>We collect nothing.</strong> The developer of PTTdroid operates no account
+        system and receives no data from the app — no usage statistics, no crash reports, no
+        device identifiers.</li>
+      <li><strong>Your settings never leave your device</strong>, except the ones that have to be
+        sent to the relay in order to connect to it.</li>
+      <li><strong>Your audio is not recorded.</strong> It is captured while you hold the button,
+        sent live to the relay, passed on to the other radios on your channel, and then it is
+        gone. Nothing writes it to disk.</li>
+      <li><strong>You choose the relay.</strong> It can be a server you run, or this device
+        itself. If you leave the app on its shipped default, it connects to a relay this project
+        operates — see <a href="#relay">Which relay you are talking to</a>.</li>
+      <li><strong>There are no third parties.</strong> No advertising, no analytics SDKs, no
+        Google Play services, no trackers of any kind.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">On device</p>
+  <div>
+    <h2>What is stored<br>on your device</h2>
+    <p class="muted">
+      PTTdroid keeps its settings in the app's own private storage, which no other app can read
+      and which the operating system removes when you uninstall. Nothing here is uploaded
+      anywhere by the app.
+    </p>
+    <div class="scroll"><table>
+      <tr><th>What</th><th>Why it is kept</th></tr>
+      <tr><td>Relay address and port</td><td>So the app knows what to connect to. Only used when you connect.</td></tr>
+      <tr><td>Channel number</td><td>The channel you were last on, 1 to 99.</td></tr>
+      <tr><td>Display name</td><td>Shown to the other radios on your channel while you hold the floor. Defaults to <code>Anon</code>.</td></tr>
+      <tr><td>Access token</td><td>The relay's shared secret, if it has one. Sent as a request header when connecting.</td></tr>
+      <tr><td>Certificate fingerprint</td><td>The SHA-256 of the relay's certificate, if you pinned one.</td></tr>
+      <tr><td>Theme, floating-button position and toggles</td><td>Interface preferences.</td></tr>
+    </table></div>
+    <div class="note warn">
+      <strong>The access token is stored in plain text.</strong> It sits in the app's private
+      storage like every other setting, not in the Android keystore or the iOS keychain. On a
+      device that is not encrypted, or one that has been rooted or jailbroken, treat it as
+      readable. It is a shared secret for a whole channel rather than a personal credential, which
+      is why it is handled this way — but it is worth knowing.
+    </div>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">In flight</p>
+  <div>
+    <h2>What is sent<br>to the relay</h2>
+    <p class="muted">
+      Connecting to a relay means sending it what it needs to place you on a channel, and nothing
+      else. There is no registration step and no profile.
+    </p>
+    <ul class="tight">
+      <li><strong>Your display name and channel number</strong>, as part of the connection
+        address. Because they are in the address rather than in the body, a relay — and any proxy
+        in front of it — will normally record them in its ordinary connection logs.</li>
+      <li><strong>The access token</strong>, if you set one, as a request header. It is never put
+        in the address, so it does not land in logs the way the name does.</li>
+      <li><strong>Audio</strong>, only while you are holding the talk button and only after the
+        relay has granted you the floor. It is raw 16&nbsp;kHz mono PCM, streamed as it is
+        captured.</li>
+      <li><strong>Two control messages</strong>: a request for the floor when you press, and a
+        release when you let go.</li>
+      <li><strong>Your IP address</strong>, unavoidably, as with anything you connect to over a
+        network.</li>
+    </ul>
+    <p class="muted">
+      In the other direction the app receives audio from whoever holds the floor, that person's
+      display name, and a count of how many radios are on the channel.
+    </p>
+    <div class="note">
+      <strong>The microphone opens only after the relay says yes.</strong> Pressing the button
+      sends a request; the microphone is not opened until the floor is granted, and it is closed
+      the moment you let go. There is no voice activation, no always-listening mode, and no
+      keyword detection.
+    </div>
+  </div>
+</section>
+
+<section class="wrap panel" id="relay">
+  <p class="label">The relay</p>
+  <div>
+    <h2>Which relay you<br>are talking to</h2>
+    <p class="muted">
+      Everything you say passes through a relay, so which one you use is the whole privacy story.
+      There are three cases, and the app tells you which one is in force under
+      <strong>Settings → Relay</strong>, including the exact address it will dial.
+    </p>
+
+    <h3>A relay you run — Settings → Relay → Custom</h3>
+    <p class="muted">
+      Point the app at your own copy of <a href="https://github.com/devapro/ptt-server">ptt-server</a>
+      and no one else is in the path. That server keeps no database and stores no audio and no
+      messages; the only file it writes is its own TLS certificate fingerprint. It does print
+      ordinary operational logs — a session identifier, the display name, the channel number, and
+      when each radio joined, left, took the floor or released it — to its console. Those logs are
+      yours, on your machine, under whatever retention you give them.
+    </p>
+
+    <h3>This device — Settings → Hands-free → Host a relay on this device</h3>
+    <p class="muted">
+      On Android and desktop, the app can be the relay itself, and other people on the same Wi-Fi
+      connect to it. Nothing then leaves the local network at all. This on-device relay serves
+      plaintext only, so treat it as being as private as the network it runs on.
+    </p>
+
+    <h3>The shipped default — Settings → Relay → Default</h3>
+    <p class="muted">
+      So that a fresh install can be tried without setting up a server first, PTTdroid ships
+      pointing at a relay this project operates, over an encrypted <code>wss://</code>
+      connection. <strong>If you leave the app on Default, your audio and your display name pass
+      through a machine we run.</strong> It runs the same <code>ptt-server</code> code as above,
+      so it stores no audio and no messages and keeps no database — but its console logs, which
+      record display names and channel activity, are held by the hosting provider under that
+      provider's retention, and we do not control how long that is.
+    </p>
+    <div class="note warn">
+      <strong>For anything you would not say in front of a stranger, do not use the default
+      relay.</strong> Switch to Custom and give the app an address you control, or switch on
+      <em>Host a relay on this device</em>. The shipped default exists to make the app work out of
+      the box, not because it is the private choice.
+    </div>
+    <p class="muted small">
+      Whichever you pick, turn on <strong>Encrypted connection</strong> where the relay supports
+      it. Over <code>wss://</code> the app will also pin the relay's exact certificate if you paste
+      its fingerprint, which is a stricter guarantee than the usual certificate-authority check.
+    </p>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Permissions</p>
+  <div>
+    <h2>What the app<br>asks for</h2>
+    <div class="scroll"><table>
+      <tr><th>Permission</th><th>What it is for</th></tr>
+      <tr><td><code>RECORD_AUDIO</code></td><td>Capturing your voice while you hold the talk button. Nothing is captured at any other time.</td></tr>
+      <tr><td><code>INTERNET</code></td><td>Connecting to the relay.</td></tr>
+      <tr><td><code>FOREGROUND_SERVICE</code><br><code>FOREGROUND_SERVICE_MICROPHONE</code></td><td>Keeping the channel open while the app is in the background or the screen is off. Android requires a visible, ongoing notification for this, which is the one you can talk from.</td></tr>
+      <tr><td><code>POST_NOTIFICATIONS</code></td><td>Showing that ongoing notification.</td></tr>
+      <tr><td><code>MODIFY_AUDIO_SETTINGS</code></td><td>Routing playback for a two-way call, so incoming audio behaves like a radio rather than like music.</td></tr>
+      <tr><td><code>SYSTEM_ALERT_WINDOW</code></td><td>The optional floating talk button that sits over other apps. Leave the feature off and the app never asks for it; everything else works without it.</td></tr>
+    </table></div>
+    <p class="muted small">
+      PTTdroid asks for no location, no contacts, no camera, no storage and no phone-state
+      access, and it has no way to read anything else on your device.
+    </p>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Third parties</p>
+  <div>
+    <h2>Nobody else<br>is involved</h2>
+    <p class="muted">
+      There is no advertising, no analytics, no crash reporting, no attribution, no A/B testing
+      and no Google Play services in this app. It contains no third-party SDK that reports
+      anything anywhere. That is not only a policy: the app is distributed through F-Droid, which
+      builds it from source and would not accept it otherwise, and the whole source tree is public
+      and can be checked.
+    </p>
+    <p class="muted">
+      We do not sell, rent or share any data, because we do not have any to sell, rent or share.
+    </p>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Your choices</p>
+  <div>
+    <h2>Deleting your data</h2>
+    <ul class="tight">
+      <li><strong>Everything the app holds is on your device.</strong> Uninstalling PTTdroid, or
+        clearing its storage in the system settings, removes all of it — settings, display name,
+        access token and all.</li>
+      <li><strong>There is no server-side account to delete</strong>, because there is no account.
+        A relay holds a live session only while you are connected, and it is discarded the moment
+        you disconnect.</li>
+      <li><strong>To have a relay's logs deleted</strong>, ask whoever runs it. If that is you, it
+        is your machine. If it is the shipped default, write to us and we will remove what we
+        can — but do note the caution above about using it for anything sensitive.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Children</p>
+  <div>
+    <h2>Age</h2>
+    <p class="muted">
+      PTTdroid is a general-purpose tool for groups who run their own network infrastructure. It
+      is not directed at children, it has no content of its own, and it knowingly collects nothing
+      from anybody, children included.
+    </p>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Changes</p>
+  <div>
+    <h2>Changes to<br>this policy</h2>
+    <p class="muted">
+      If this policy changes, the date at the top of the page changes with it, and the change
+      itself appears in the project's public history — this page lives in the same repository as
+      the app, so every revision of it is a commit anyone can read. Material changes will also be
+      noted in the release notes for the version that introduces them.
+    </p>
+  </div>
+</section>
+
+<section class="wrap panel">
+  <p class="label">Contact</p>
+  <div>
+    <h2>Getting in touch</h2>
+    <p class="muted">
+      Questions about this policy, or about anything the app does with data, go to the public
+      issue tracker:
+      <a href="https://github.com/devapro/ptt-client-android/issues">github.com/devapro/ptt-client-android/issues</a>.
+    </p>
+    <p class="muted">
+      If you would rather not ask in public — including asking for something to be removed from
+      the default relay's logs — contact the maintainer through
+      <a href="https://github.com/devapro">github.com/devapro</a>.
+    </p>
+  </div>
+</section>
+
+</main>
+
+<footer class="wrap">
+  <div class="note">
+    <strong>Read it in the source instead.</strong> Every claim on this page is checkable. What is
+    stored on device is <code>data/settings/AppSettings.kt</code>; what is sent to the relay is
+    the wire protocol at
+    <a href="https://github.com/devapro/ptt-server/blob/main/docs/protocol.md">protocol.md</a>;
+    what the relay does with it is
+    <a href="https://github.com/devapro/ptt-server">ptt-server</a>, all of it under GPL-3.0.
+  </div>
+  <nav class="footlinks">
+    <a href="index.html">Home</a>
+    <a href="https://github.com/devapro/ptt-client-android">Client</a>
+    <a href="https://github.com/devapro/ptt-server">Server</a>
+    <a href="https://github.com/devapro/ptt-client-android/blob/main/LICENSE">GPL-3.0</a>
+  </nav>
+</footer>
+
+</body>
+</html>
