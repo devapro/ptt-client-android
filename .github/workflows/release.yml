@@ -74,6 +74,56 @@ jobs:
             exit 1
           fi
 
+      # The official catalogue reads this release's version code out of the recipe's
+      # CurrentVersionCode, not out of the Gradle files: versionCode is derived from
+      # version.properties at build time, so F-Droid's parse_androidmanifests() finds no literal
+      # to grep and the recipe's UpdateCheckData points back at this file instead. A stale
+      # CurrentVersionCode is therefore silent — the tag builds, the release ships, and
+      # f-droid.org simply never sees it. Checked here for the same reason the tag is.
+      - name: Check the F-Droid recipe against version.properties
+        run: |
+          set -euo pipefail
+          python3 -c 'import yaml' 2>/dev/null \
+            || python3 -m pip install --quiet --disable-pip-version-check pyyaml
+          python3 - "${{ steps.version.outputs.name }}" "${{ steps.version.outputs.code }}" <<'PY'
+          import sys, yaml
+
+          want_name, want_code = sys.argv[1], int(sys.argv[2])
+          path = 'metadata/com.github.devapro.pttdroid.yml'
+          recipe = yaml.safe_load(open(path))
+          errors = []
+
+          if str(recipe.get('CurrentVersion')) != want_name:
+              errors.append(f"CurrentVersion is {recipe.get('CurrentVersion')!r}, expected {want_name!r}")
+          if recipe.get('CurrentVersionCode') != want_code:
+              errors.append(f"CurrentVersionCode is {recipe.get('CurrentVersionCode')!r}, expected {want_code}")
+
+          # F-Droid builds the Builds entry whose commit is this tag, so one has to be there,
+          # has to agree, and must not be disabled.
+          builds = recipe.get('Builds') or []
+          entries = [b for b in builds if b.get('versionCode') == want_code]
+          if not entries:
+              present = ', '.join(str(b.get('versionCode')) for b in builds) or 'none'
+              errors.append(f"no Builds entry with versionCode {want_code} (present: {present})")
+          else:
+              build = entries[-1]
+              want_commit = 'v' + want_name
+              if str(build.get('versionName')) != want_name:
+                  errors.append(f"the Builds entry's versionName is {build.get('versionName')!r}, expected {want_name!r}")
+              if build.get('commit') != want_commit:
+                  errors.append(f"the Builds entry's commit is {build.get('commit')!r}, expected {want_commit!r}")
+              if build.get('disable'):
+                  errors.append(f"the Builds entry is disabled: {build['disable']!r}")
+
+          for e in errors:
+              print(f"::error file={path}::{e}")
+          if errors:
+              print("::error::the F-Droid recipe disagrees with version.properties, so"
+                    " f-droid.org would not see this release. See docs/fdroid.md.")
+              raise SystemExit(1)
+          print(f"{path} agrees: {want_name} ({want_code})")
+          PY
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
