@@ -1,0 +1,4 @@
+# Generated agent artefacts — suppression logs, inline-comment files, QA reports.
+# Nothing in here is authored; nothing in here is committed.
+*
+!.gitignore

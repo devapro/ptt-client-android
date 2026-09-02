@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "mobile": {
+      "command": "mcp-devices",
+      "env": {
+        "MOBILE_PROFILE": "android"
+      }
+    }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk *)",
+      "Bash(./gradlew *)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git status*)",
+      "Bash(git show*)",
+      "Bash(git branch*)",
+      "Bash(git stash list*)",
+      "Bash(gh pr diff*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr list*)",
+      "Bash(gh api repos/*)",
+      "Bash(gh repo view*)",
+      "Bash(find * -name*)",
+      "Bash(find * -type*)",
+      "Bash(wc *)",
+      "Bash(jq *)",
+      "Bash(ls *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(sed -n *)",
+      "Bash(grep *)",
+      "Bash(awk *)",
+      "Bash(adb devices*)",
+      "Bash(adb -s * shell dumpsys*)",
+      "Bash(adb -s * logcat*)",
+      "Bash(adb -s * install*)",
+      "Bash(adb -s * exec-out screencap*)",
+      "Bash(curl -s localhost:*)",
+      "mcp__mobile__device",
+      "mcp__mobile__app",
+      "mcp__mobile__ui",
+      "mcp__mobile__input",
+      "mcp__mobile__screen",
+      "mcp__mobile__system",
+      "mcp__mobile__flow"
+    ],
+    "deny": [
+      "Bash(git push*)",
+      "Bash(git commit*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(git rebase*)",
+      "Bash(git branch -D*)",
+      "Bash(gh pr merge*)",
+      "Bash(gh release*)",
+      "Bash(rm -rf*)",
+      "Bash(sudo*)",
+      "Bash(wget*)",
+      "Read(./**/*.jks)",
+      "Read(./**/*.p12)",
+      "Read(./**/*.keystore)",
+      "Read(./local.properties)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/post-edit-review-reminder.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-stop-review-check.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
