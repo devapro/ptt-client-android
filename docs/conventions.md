@@ -24,6 +24,19 @@
 - **One reducer per action.** A reducer performs an effect and returns
   `Result(state, nextAction?, event?)`; it does not reach into the transport or the audio devices.
   Call `PttController` or `PttSessionLauncher` instead.
+- **A reducer's returned state is merged, not assigned — and a suspending reducer must not expect
+  to own the whole of `ScreenState`.** `reduce(action, state)` receives its snapshot **by value**,
+  taken before it runs, and `MainActivityViewModel.onAction` launches one coroutine per action. Two
+  fields are written from outside that pipeline and are not a reducer's to return: `ptt`, mirrored
+  in from `PttController`, and `micPermissionGranted`, set by `onMicPermissionResult`. So `onAction`
+  re-applies both from the live value (`_state.update { live -> result.state.copy(ptt = live.ptt,
+  …) }`) rather than assigning `result.state`. Without that, a reducer which suspends resumes
+  holding a pre-suspend copy and silently reverts whichever of the two changed meanwhile — a
+  settings save is immediately followed by `Reconnect`, exactly when the controller is emitting, so
+  the talk-floor readout went briefly stale. **Serialising action dispatch would not fix this**: the
+  controller mirror is its own coroutine, not another action. Today only `SaveSettingsReducer`
+  suspends, on the DataStore write; keep the merge whenever a reducer gains a suspending
+  collaborator. Pinned by `MainActivityViewModelTest`.
 - **No business logic in Composables.** They render state and emit actions.
 - Connection/floor/channel state belongs to `PttController`. Do not add a second source of truth —
   the Activity, the overlay and the widget must not be able to disagree.

@@ -51,7 +51,16 @@ class MainActivityViewModel(
     override fun onAction(action: MainAction) {
         viewModelScope.launch {
             val result = actionProcessor.process(action, _state.value)
-            _state.value = result.state
+            // Merge, never replace. `reduce()` receives its state snapshot by value, so a reducer
+            // that suspends resumes holding a pre-suspend copy. [ScreenState.ptt] is mirrored in
+            // from PttController and [ScreenState.micPermissionGranted] is set by
+            // onMicPermissionResult -- both are written from outside this pipeline and neither is
+            // a reducer's to return. Assigning result.state wholesale reverted whichever of them
+            // changed while the reducer was suspended. Serialising dispatch would not fix it: the
+            // controller mirror is its own coroutine. See docs/conventions.md § Architecture.
+            _state.update { live ->
+                result.state.copy(ptt = live.ptt, micPermissionGranted = live.micPermissionGranted)
+            }
             result.event?.let { _event.trySend(it) }
             result.action?.let { onAction(it) }
         }
