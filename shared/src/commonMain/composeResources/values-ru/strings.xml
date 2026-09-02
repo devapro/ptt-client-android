@@ -1,0 +1,122 @@
+<resources>
+    <!-- Duplicated from :app's res/values/strings.xml: android:label="@string/app_name" in
+         AndroidManifest.xml needs the Android resource to keep existing, but MainScreen's title
+         bar reads it through the same Compose Multiplatform accessor as every other string on
+         screen, so the value is kept here too. -->
+    <string name="app_name">PTTdroid</string>
+
+    <!-- Session status. One vocabulary, shared by the app screen, the widget and the
+         notification, so the same session never gets described three different ways. -->
+    <string name="status_disconnected">Не в сети</string>
+    <string name="status_connecting">Подключение…</string>
+    <string name="status_ready">Канал свободен</string>
+    <string name="status_requesting">Запрос…</string>
+    <string name="status_transmitting">Вы в эфире</string>
+    <string name="status_receiving">Приём</string>
+    <string name="status_receiving_from">%1$s говорит</string>
+    <string name="someone">Кто-то</string>
+
+    <!-- The word on the face of the PTT control. Short enough to read at a glance, in the
+         middle of doing something else, which is the whole point of a walkie-talkie. -->
+    <string name="ptt_cap_offline">ОФЛАЙН</string>
+    <string name="ptt_cap_linking">СВЯЗЬ</string>
+    <string name="ptt_cap_talk">УДЕРЖ.</string>
+    <string name="ptt_cap_wait">ЖДИТЕ</string>
+    <string name="ptt_cap_on_air">ЭФИР</string>
+    <string name="ptt_cap_busy">ЗАНЯТО</string>
+
+    <!-- Main screen -->
+    <string name="channel_label">Канал</string>
+    <string name="settings">Настройки</string>
+    <string name="ptt_hold_to_talk">Удерживайте кнопку, чтобы говорить</string>
+    <string name="ptt_release_to_stop">Отпустите, чтобы закончить</string>
+    <string name="ptt_requesting">Ожидание канала…</string>
+    <string name="ptt_blocked">Кто-то другой говорит</string>
+    <string name="ptt_offline">Нет подключения к релею</string>
+    <string name="main_connect">Подключить</string>
+    <string name="main_disconnect">Отключить</string>
+    <plurals name="peers_online">
+        <item quantity="one">%1$d рация онлайн</item>
+        <item quantity="few">%1$d рации онлайн</item>
+        <item quantity="many">%1$d раций онлайн</item>
+        <item quantity="other">%1$d раций онлайн</item>
+    </plurals>
+    <string name="main_channel_number">Канал %1$d</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_settings">Открыть настройки</string>
+    <string name="cd_back">Назад</string>
+    <string name="cd_ptt_toggle">Переключить передачу</string>
+    <string name="cd_channel_down">Предыдущий канал</string>
+    <string name="cd_channel_up">Следующий канал</string>
+    <string name="cd_dismiss_error">Закрыть</string>
+
+    <!-- Notification -->
+    <string name="notification_channel_name">Сеанс PTT</string>
+    <string name="notification_channel_description">Поддерживает соединение push-to-talk</string>
+    <string name="notification_title">PTT · канал %1$d</string>
+    <string name="action_start_talking">Говорить</string>
+    <string name="action_stop_talking">Стоп</string>
+    <string name="action_stop_service">Отключить</string>
+
+    <!-- Settings screen -->
+    <string name="settings_server">Релей</string>
+    <string name="settings_server_caption">Компьютер с ptt-server или этот телефон, если он хостит.</string>
+    <string name="settings_server_default">По умолчанию</string>
+    <string name="settings_server_custom">Свой</string>
+    <string name="settings_server_default_summary">Подключается к адресу из приложения. Выберите «Свой», чтобы указать свой релей.</string>
+    <string name="settings_server_url">Адрес сервера</string>
+    <string name="settings_server_url_summary">Хост, хост:порт или полный URL из лога сервера или туннеля.</string>
+    <string name="settings_endpoint">Подключение к %1$s</string>
+    <!-- Security. The relay is self-hosted, so both of these are things the operator has to
+         hand out: a fingerprint for a self-signed certificate, and a shared token. -->
+    <string name="settings_security">Безопасность</string>
+    <string name="settings_security_caption">Задайте в соответствии с релеем. Сервер печатает оба значения при запуске.</string>
+    <string name="settings_tls">Шифрованное соединение</string>
+    <string name="settings_tls_summary">Подключаться по wss:// вместо ws://</string>
+    <string name="settings_fingerprint">Отпечаток сертификата (SHA-256)</string>
+    <string name="settings_fingerprint_summary">Оставьте пустым, если у релея публично доверенный сертификат, например через туннель. Для самоподписанного релея вставьте отпечаток из лога сервера.</string>
+    <string name="settings_tls_host_conflict">Собственный релей этого устройства работает только без шифрования. Выключите шифрование или укажите релей с сертификатом.</string>
+    <string name="settings_token">Токен доступа</string>
+    <string name="settings_token_summary">Нужен, только если релей запущен с токеном.</string>
+    <string name="settings_show">Показать</string>
+    <string name="settings_hide">Скрыть</string>
+
+    <string name="settings_identity">Идентификация</string>
+    <string name="settings_identity_caption">Видно всем на канале, пока вы говорите.</string>
+    <string name="settings_display_name">Отображаемое имя</string>
+    <string name="settings_channel">Канал (1–99)</string>
+    <string name="settings_appearance">Оформление</string>
+    <string name="settings_theme_system">Системная</string>
+    <string name="settings_theme_light">Светлая</string>
+    <string name="settings_theme_dark">Тёмная</string>
+    <string name="settings_hands_free">Громкая связь</string>
+    <string name="settings_floating">Плавающая кнопка PTT</string>
+    <string name="settings_floating_summary">Показывать перетаскиваемую кнопку поверх других приложений</string>
+    <string name="settings_grant_overlay">Разрешить «поверх других приложений»</string>
+    <string name="settings_overlay_required">Нужно разрешение, чтобы показать плавающую кнопку</string>
+    <string name="settings_host_server">Хостить релей на этом устройстве</string>
+    <string name="settings_host_server_summary">Запустить сервер здесь, без отдельной машины. Другие подключаются к IP этого устройства в той же сети Wi‑Fi.</string>
+    <string name="settings_save">Сохранить и переподключиться</string>
+    <string name="settings_saved">Настройки сохранены</string>
+
+    <!-- Validation -->
+    <string name="error_host_blank">Введите адрес релея</string>
+    <string name="error_host_invalid">Это не адрес. Попробуйте что-то вроде relay.local:8000</string>
+    <string name="error_host_credentials">Уберите имя пользователя из адреса — используйте токен доступа ниже</string>
+    <string name="error_port_invalid">Порт должен быть от 1 до 65535</string>
+    <string name="error_channel_invalid">Канал должен быть от 1 до 99</string>
+    <string name="error_name_too_long">Имя не длиннее 32 символов</string>
+    <string name="error_fingerprint_invalid">Отпечаток SHA-256 — 64 шестнадцатеричных символа, с двоеточиями или без</string>
+    <string name="error_token_too_long">Токен не длиннее 128 символов</string>
+
+    <!-- Permissions -->
+    <string name="permission_mic_required">Для разговора нужен доступ к микрофону</string>
+    <string name="permission_grant">Разрешить доступ к микрофону</string>
+
+    <string name="settings_language">Язык</string>
+    <string name="settings_language_system">Системный</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_ru">Русский</string>
+    <string name="settings_language_sr">Српски</string>
+</resources>

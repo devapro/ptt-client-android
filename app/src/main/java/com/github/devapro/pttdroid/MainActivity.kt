@@ -1,6 +1,7 @@
 package com.github.devapro.pttdroid
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -25,7 +26,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.LanguageMode
 import com.github.devapro.pttdroid.data.settings.SettingsRepository
+import com.github.devapro.pttdroid.data.settings.applyLocale
 import com.github.devapro.pttdroid.model.MainAction
 import com.github.devapro.pttdroid.model.MainEvent
 import com.github.devapro.pttdroid.model.ScreenState
@@ -36,6 +39,7 @@ import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
 import com.github.devapro.pttdroid.viewmodel.MainActivityViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.jetbrains.compose.resources.getString
 import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
@@ -54,12 +58,29 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainActivityViewModel by viewModel()
     private val settingsRepository: SettingsRepository by inject()
     private val overlayController: OverlayController by inject()
+
+    /**
+     * Language already wrapped into the base context. Seeds the recreate guard so the first
+     * `collectAsState` emission (and the `AppSettings()` placeholder) cannot loop `recreate()`.
+     */
+    private var attachedLanguageMode: LanguageMode = LanguageMode.SYSTEM
+
     private val snackbarHostState = SnackbarHostState()
 
     private val micPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
         viewModel.onMicPermissionResult(grants[Manifest.permission.RECORD_AUDIO] == true)
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        val mode = try {
+            runBlocking { settingsRepository.settings.first().languageMode }
+        } catch (e: Exception) {
+            LanguageMode.SYSTEM
+        }
+        attachedLanguageMode = mode
+        super.attachBaseContext(applyLocale(newBase, mode))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,7 +93,10 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val state by viewModel.state.collectAsStateWithLifecycle()
-            val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
+            val settings by settingsRepository.settings.collectAsState(
+                initial = AppSettings(languageMode = attachedLanguageMode),
+            )
+            var appliedLanguage by remember { mutableStateOf(settings.languageMode) }
             var overlayGranted by remember { mutableStateOf(canDrawOverlays()) }
 
             PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
@@ -96,6 +120,14 @@ class MainActivity : ComponentActivity() {
 
             // Re-check the special permission whenever we come back from Settings.
             LaunchedEffect(state.screen) { overlayGranted = canDrawOverlays() }
+            // Recreate when the persisted language changes so attachBaseContext re-wraps the
+            // configuration. The appliedLanguage guard skips the first composition.
+            LaunchedEffect(settings.languageMode) {
+                if (settings.languageMode != appliedLanguage) {
+                    appliedLanguage = settings.languageMode
+                    recreate()
+                }
+            }
         }
 
         collectEvents()

@@ -34,6 +34,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             displayName = prefs[KEY_NAME] ?: AppSettings.DEFAULT_NAME,
             floatingButtonEnabled = prefs[KEY_FLOATING] ?: false,
             themeMode = ThemeMode.fromStorage(prefs[KEY_THEME]),
+            languageMode = LanguageMode.fromStorage(prefs[KEY_LANGUAGE]),
             hostServerEnabled = prefs[KEY_HOST_SERVER] ?: false,
             useTls = prefs[KEY_USE_TLS] ?: AppSettings.DEFAULT_TLS,
             certificateSha256 = prefs[KEY_CERT_SHA256].orEmpty(),
@@ -62,6 +63,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         prefs[KEY_FLOATING] = settings.floatingButtonEnabled
         prefs[KEY_HOST_SERVER] = settings.hostServerEnabled
         prefs[KEY_THEME] = settings.themeMode.name
+        prefs[KEY_LANGUAGE] = settings.languageMode.name
         prefs[KEY_USE_TLS] = settings.useTls
         // Stored normalized, so what is compared at handshake time never depends on how the
         // fingerprint happened to be pasted.
@@ -103,6 +105,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val KEY_NAME = stringPreferencesKey("display_name")
         val KEY_FLOATING = booleanPreferencesKey("floating_button_enabled")
         val KEY_THEME = stringPreferencesKey("theme_mode")
+        val KEY_LANGUAGE = stringPreferencesKey("language_mode")
         val KEY_HOST_SERVER = booleanPreferencesKey("host_server_enabled")
         val KEY_USE_TLS = booleanPreferencesKey("use_tls")
         val KEY_CERT_SHA256 = stringPreferencesKey("certificate_sha256")

@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.applyLanguagePreference
 import com.github.devapro.pttdroid.data.settings.SettingsRepository
 import com.github.devapro.pttdroid.di.sharedDesktopModule
 import com.github.devapro.pttdroid.di.sharedModule
@@ -61,6 +62,8 @@ fun main() {
             // The Android app does this from MainActivity.onStart(), gated on a runtime
             // permission result; desktop has no such permission, so it happens once, up front.
             LaunchedEffect(Unit) { viewModel.onMicPermissionResult(granted = true) }
+
+            LaunchedEffect(settings.languageMode) { applyLanguagePreference(settings.languageMode) }
 
             // Mirrors MainActivity.collectEvents(): only ShowMessage has a desktop equivalent —
             // there is no runtime mic permission or "draw over other apps" prompt to route the

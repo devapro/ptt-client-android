@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.SettingsRepository
+import com.github.devapro.pttdroid.data.settings.applyLanguagePreference
 import com.github.devapro.pttdroid.model.MainAction
 import com.github.devapro.pttdroid.model.MainEvent
 import com.github.devapro.pttdroid.model.ScreenState
@@ -49,6 +50,8 @@ fun App() {
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) { viewModel.onMicPermissionResult(granted = true) }
+
+    LaunchedEffect(settings.languageMode) { applyLanguagePreference(settings.languageMode) }
 
     LaunchedEffect(Unit) {
         viewModel.event.collect { event ->

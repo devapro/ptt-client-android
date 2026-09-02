@@ -1,6 +1,7 @@
 package com.github.devapro.pttdroid.data
 
 import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.LanguageMode
 import com.github.devapro.pttdroid.data.settings.ServerAddress
 import com.github.devapro.pttdroid.data.settings.ServerMode
 import kotlin.test.Test
@@ -93,6 +94,7 @@ class AppSettingsTest {
         assertEquals(AppSettings.DEFAULT_HOST, AppSettings().serverHost)
         assertEquals(AppSettings.DEFAULT_PORT, AppSettings().serverPort)
         assertEquals(AppSettings.DEFAULT_TLS, AppSettings().useTls)
+        assertEquals(LanguageMode.SYSTEM, AppSettings().languageMode)
     }
 
     @Test

@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.CertificatePin
 import com.github.devapro.pttdroid.data.settings.ServerAddress
+import com.github.devapro.pttdroid.data.settings.LanguageMode
 import com.github.devapro.pttdroid.data.settings.ServerMode
 import com.github.devapro.pttdroid.data.settings.ThemeMode
 import com.github.devapro.pttdroid.shared.resources.*
@@ -96,6 +97,7 @@ fun SettingsScreen(
     var floating by remember(settings) { mutableStateOf(settings.floatingButtonEnabled) }
     var hostServer by remember(settings) { mutableStateOf(settings.hostServerEnabled) }
     var theme by remember(settings) { mutableStateOf(settings.themeMode) }
+    var language by remember(settings) { mutableStateOf(settings.languageMode) }
     var useTls by remember(settings) { mutableStateOf(settings.useTls) }
     var fingerprint by remember(settings) {
         mutableStateOf(CertificatePin.format(settings.certificateSha256))
@@ -131,6 +133,7 @@ fun SettingsScreen(
         floatingButtonEnabled = floating,
         hostServerEnabled = hostServer,
         themeMode = theme,
+        languageMode = language,
         useTls = secure,
         certificateSha256 = CertificatePin.normalize(fingerprint),
         accessToken = token.trim(),
@@ -366,6 +369,14 @@ fun SettingsScreen(
                 )
             }
 
+            SectionCard(title = stringResource(Res.string.settings_language)) {
+                SegmentedChoice(
+                    options = LANGUAGE_MODES,
+                    selected = language,
+                    onSelect = { language = it },
+                )
+            }
+
             SectionCard(title = stringResource(Res.string.settings_hands_free)) {
                 ToggleRow(
                     title = stringResource(Res.string.settings_floating),
@@ -417,6 +428,13 @@ private val THEME_MODES = listOf(
     ThemeMode.SYSTEM to Res.string.settings_theme_system,
     ThemeMode.LIGHT to Res.string.settings_theme_light,
     ThemeMode.DARK to Res.string.settings_theme_dark,
+)
+
+private val LANGUAGE_MODES = listOf(
+    LanguageMode.SYSTEM to Res.string.settings_language_system,
+    LanguageMode.ENGLISH to Res.string.settings_language_en,
+    LanguageMode.RUSSIAN to Res.string.settings_language_ru,
+    LanguageMode.SERBIAN to Res.string.settings_language_sr,
 )
 
 /**

@@ -219,6 +219,17 @@ class SettingsScreenTest {
         rule.runOnIdle { assertEquals(ThemeMode.LIGHT, saved.first().themeMode) }
     }
 
+    @Test
+    fun languageSelector_isDisplayed() {
+        show()
+
+        rule.onNodeWithText(string(Res.string.settings_language)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(string(Res.string.settings_language_system)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(string(Res.string.settings_language_en)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(string(Res.string.settings_language_ru)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(string(Res.string.settings_language_sr)).performScrollTo().assertIsDisplayed()
+    }
+
     // --- security ---------------------------------------------------------------------------
 
     private val fingerprint =

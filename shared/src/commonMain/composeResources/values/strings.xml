@@ -111,4 +111,10 @@
     <!-- Permissions -->
     <string name="permission_mic_required">Microphone access is required to talk</string>
     <string name="permission_grant">Grant microphone access</string>
+
+    <string name="settings_language">Language</string>
+    <string name="settings_language_system">System</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_ru">Русский</string>
+    <string name="settings_language_sr">Српски</string>
 </resources>
