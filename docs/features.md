@@ -48,6 +48,13 @@ a snackbar.
 - **Appearance** — System / Light / Dark. The app follows the system by default, but a radio gets
   pulled out at night on a phone whose owner has never touched the system theme, so it can be
   forced per-app.
+- **Language** — System / English / Russian / Serbian. This is a walkie-talkie: it gets handed to
+  someone who does not read whatever language the phone owner set up — a guest, a kid, a coworker
+  borrowing a channel for the afternoon — so the UI language can be forced independently of the
+  device's own locale. A system locale that is none of the three falls back to English. On
+  Android and desktop the change takes effect immediately; on iOS, best-effort and
+  runtime-unverified, it is expected to take effect on the next launch rather than the current
+  one — see `platform-support.md`.
 - **Hands-free** — the floating PTT button toggle, with a hand-off to the system "draw over other
   apps" screen when the permission is missing, and **Host a relay on this device**, which runs the
   server in-app so no separate machine is needed.

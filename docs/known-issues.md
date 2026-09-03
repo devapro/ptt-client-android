@@ -158,6 +158,26 @@ overlap with.
     by installing the resulting signed release APK on an emulator and confirming the app launches
     and renders — this is exactly the class of failure a debug build, or an unminified release
     build, never shows.
+- **Compose Multiplatform 1.12.0 exposes no public API to point resource lookup at an arbitrary
+  locale.** `ComposeEnvironment`/`LocalComposeEnvironment` are `internal`, and
+  `LanguageQualifier`/`RegionQualifier`/`ScriptQualifier` are `@InternalResourceApi` — none of them
+  reachable from app code without an opt-in that isn't actually offered here. `stringResource()`
+  resolves through `androidx.compose.ui.text.intl.Locale.current`, which is a live re-read of the
+  platform's own locale primitive (`android.os.LocaleList.getDefault()`,
+  `java.util.Locale.getDefault()`, `NSLocale.preferredLanguages` respectively) — but that read is
+  **not** Compose-observable state, so setting the platform locale alone changes nothing on screen
+  until something else forces a recomposition. The supported pattern, used by the **Settings →
+  Language** setting (`data/settings/LanguageMode.kt`): apply the platform locale *during*
+  composition — `remember(language) { applyLanguagePreference(language) }`, not a
+  `LaunchedEffect`, which only runs *after* the first pass has already resolved every string
+  against the old locale — then wrap the affected content in `key(language) { ... }` so Compose
+  discards and rebuilds the subtree against it (desktop's `Main.kt`, iOS's `ui/App.kt`). Android
+  instead forces a real configuration change via `Context.attachBaseContext()` +
+  `Activity.recreate()` (`LocaleApplier.android.kt`), which is the only one of the three that also
+  gets a real `res/` configuration (layout direction, plurals) rather than just swapping which
+  Compose-resources string table is read. Deleting the `key()`, or moving the apply call into a
+  `LaunchedEffect`, silently breaks language switching rather than failing loudly — don't
+  rediscover this by "cleaning up" what looks like a redundant `key()`.
 - **On Linux, `javax.sound.sampled`'s "default" line can silently reach the wrong device.**
   `DesktopVoiceRecorder`/`DesktopVoicePlayer` (Phase 6) use `AudioSystem.getLine(info)` on purpose
   — not a hardcoded mixer — because that is the only choice that is portable across a user's

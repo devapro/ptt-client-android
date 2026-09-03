@@ -1,0 +1,117 @@
+<resources>
+    <!-- Session status. One vocabulary, shared by the app screen, the widget and the
+         notification, so the same session never gets described three different ways. -->
+    <string name="status_disconnected">Ван мреже</string>
+    <string name="status_connecting">Повезивање…</string>
+    <string name="status_ready">Канал је слободан</string>
+    <string name="status_requesting">Захтев…</string>
+    <string name="status_transmitting">Ви сте у етру</string>
+    <string name="status_receiving">Пријем</string>
+    <string name="status_receiving_from">%1$s говори</string>
+    <string name="someone">Неко</string>
+
+    <!-- The word on the face of the PTT control. Short enough to read at a glance, in the
+         middle of doing something else, which is the whole point of a walkie-talkie. -->
+    <string name="ptt_cap_offline">БЕЗ ВЕЗЕ</string>
+    <string name="ptt_cap_linking">ВЕЗА…</string>
+    <string name="ptt_cap_talk">ДРЖИ</string>
+    <string name="ptt_cap_wait">ЧЕКАЈ</string>
+    <string name="ptt_cap_on_air">У ЕТРУ</string>
+    <string name="ptt_cap_busy">ЗАУЗЕТО</string>
+
+    <!-- Main screen -->
+    <string name="channel_label">Канал</string>
+    <string name="settings">Подешавања</string>
+    <string name="ptt_hold_to_talk">Држите дугме да бисте говорили</string>
+    <string name="ptt_release_to_stop">Отпустите да зауставите</string>
+    <string name="ptt_requesting">Чекање на канал…</string>
+    <string name="ptt_blocked">Неко други говори</string>
+    <string name="ptt_offline">Није повезано са релејом</string>
+    <string name="main_connect">Повежи се</string>
+    <string name="main_disconnect">Прекини везу</string>
+    <plurals name="peers_online">
+        <item quantity="one">%1$d радио-станица на вези</item>
+        <item quantity="few">%1$d радио-станице на вези</item>
+        <item quantity="other">%1$d радио-станица на вези</item>
+    </plurals>
+    <string name="main_channel_number">Канал %1$d</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_settings">Отвори подешавања</string>
+    <string name="cd_back">Назад</string>
+    <string name="cd_ptt_toggle">Укључи/искључи пренос</string>
+    <string name="cd_channel_down">Претходни канал</string>
+    <string name="cd_channel_up">Следећи канал</string>
+    <string name="cd_dismiss_error">Одбаци</string>
+
+    <!-- Notification -->
+    <string name="notification_channel_name">PTT сесија</string>
+    <string name="notification_channel_description">Одржава push-to-talk везу активном</string>
+    <string name="notification_title">PTT · канал %1$d</string>
+    <string name="action_start_talking">Говори</string>
+    <string name="action_stop_talking">Стоп</string>
+    <string name="action_stop_service">Прекини везу</string>
+
+    <!-- Settings screen -->
+    <string name="settings_server">Релеј</string>
+    <string name="settings_server_caption">Уређај на којем ради ptt-server, или овај телефон ако он врши улогу домаћина.</string>
+    <string name="settings_server_default">Подразумевано</string>
+    <string name="settings_server_custom">Прилагођено</string>
+    <string name="settings_server_default_summary">Повезује се на адресу која долази уз апликацију. Изаберите „Прилагођено” да бисте користили сопствени релеј.</string>
+    <string name="settings_server_url">Адреса сервера</string>
+    <string name="settings_server_url_summary">Хост, хост:порт или цео URL налепљен из лога сервера или тунела.</string>
+    <string name="settings_endpoint">Повезаће се на %1$s</string>
+    <!-- Security. The relay is self-hosted, so both of these are things the operator has to
+         hand out: a fingerprint for a self-signed certificate, and a shared token. -->
+    <string name="settings_security">Безбедност</string>
+    <string name="settings_security_caption">Подесите ово да одговара релеју. Сервер исписује обе вредности при покретању.</string>
+    <string name="settings_tls">Шифрована веза</string>
+    <string name="settings_tls_summary">Повежи се преко wss:// уместо ws://</string>
+    <string name="settings_fingerprint">Отисак сертификата (SHA-256)</string>
+    <string name="settings_fingerprint_summary">Оставите празно ако релеј има јавно поуздан сертификат, на пример преко тунела. За релеј са самопотписаним сертификатом налепите отисак из лога сервера.</string>
+    <string name="settings_tls_host_conflict">Сопствени релеј овог уређаја ради само без шифровања. Искључите шифровање или изаберите релеј који има сертификат.</string>
+    <string name="settings_token">Приступни токен</string>
+    <string name="settings_token_summary">Потребан само ако је релеј покренут са токеном.</string>
+    <string name="settings_show">Прикажи</string>
+    <string name="settings_hide">Сакриј</string>
+
+    <string name="settings_identity">Идентитет</string>
+    <string name="settings_identity_caption">Приказује се свима на каналу док држите реч.</string>
+    <string name="settings_display_name">Приказано име</string>
+    <string name="settings_channel">Канал (1–99)</string>
+    <string name="settings_appearance">Изглед</string>
+    <string name="settings_theme_system">Системска</string>
+    <string name="settings_theme_light">Светла</string>
+    <string name="settings_theme_dark">Тамна</string>
+
+    <!-- Language -->
+    <string name="settings_language">Језик</string>
+    <string name="settings_language_system">Системски</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_ru">Русский</string>
+    <string name="settings_language_sr">Српски</string>
+
+    <string name="settings_hands_free">Слободне руке</string>
+    <string name="settings_floating">Плутајуће PTT дугме</string>
+    <string name="settings_floating_summary">Прикажи дугме за говор које се може превлачити преко других апликација</string>
+    <string name="settings_grant_overlay">Дозволи „приказ преко других апликација”</string>
+    <string name="settings_overlay_required">Потребна дозвола за приказ плутајућег дугмета</string>
+    <string name="settings_host_server">Покрени релеј на овом уређају</string>
+    <string name="settings_host_server_summary">Покреће сервер овде тако да није потребан посебан уређај. Остали се повезују на IP адресу овог уређаја у истој Wi‑Fi мрежи.</string>
+    <string name="settings_save">Сачувај и поново повежи</string>
+    <string name="settings_saved">Подешавања сачувана</string>
+
+    <!-- Validation -->
+    <string name="error_host_blank">Унесите адресу релеја</string>
+    <string name="error_host_invalid">Ово није адреса. Покушајте нешто попут relay.local:8000</string>
+    <string name="error_host_credentials">Уклоните корисничко име из адресе — уместо тога користите приступни токен испод</string>
+    <string name="error_port_invalid">Порт мора бити између 1 и 65535</string>
+    <string name="error_channel_invalid">Канал мора бити између 1 и 99</string>
+    <string name="error_name_too_long">Име може имати највише 32 знака</string>
+    <string name="error_fingerprint_invalid">SHA-256 отисак има 64 хексадецимална знака, са двотачкама или без њих</string>
+    <string name="error_token_too_long">Токен може имати највише 128 знакова</string>
+
+    <!-- Permissions -->
+    <string name="permission_mic_required">За говор је потребан приступ микрофону</string>
+    <string name="permission_grant">Дозволи приступ микрофону</string>
+</resources>

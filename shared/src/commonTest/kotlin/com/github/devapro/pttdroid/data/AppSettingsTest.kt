@@ -1,6 +1,7 @@
 package com.github.devapro.pttdroid.data
 
 import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.LanguageMode
 import com.github.devapro.pttdroid.data.settings.ServerAddress
 import com.github.devapro.pttdroid.data.settings.ServerMode
 import kotlin.test.Test
@@ -218,5 +219,10 @@ class AppSettingsTest {
         assertTrue(AppSettings(useTls = true).endpoint().isSecure)
         // Test-local literal: this checks the ws:// side of the split, not the shipped default.
         assertFalse(AppSettings(useTls = false).endpoint().isSecure)
+    }
+
+    @Test
+    fun `a fresh install defers to the system language`() {
+        assertEquals(LanguageMode.SYSTEM, AppSettings().languageMode)
     }
 }

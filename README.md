@@ -10,6 +10,10 @@ On Android, the point is that you can talk **without opening the app**: a microp
 service keeps the channel connected, and you can transmit from a floating button over other apps, a
 home-screen widget, or the ongoing notification.
 
+The interface is available in English, Russian and Serbian, with an in-app switcher under
+**Settings → Language** — useful when a channel gets handed to someone who does not read whatever
+language the device owner set up.
+
 ## What it looks like
 
 The interface is built for one-handed use while looking at something else. Three questions have to
@@ -151,7 +155,7 @@ its window is open, and the iOS build for as long as its audio session survives 
 
 ```bash
 ./gradlew :shared:testDebugUnitTest :shared:desktopTest       # 136 JVM tests, on both targets
-ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 39 Compose UI tests (of 43 total; 3 opt-in TLS tests need a live relay)
+ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 41 Compose UI tests (of 45 total; 3 opt-in TLS tests need a live relay)
 ./gradlew lintDebug                                          # 12 pre-existing findings, no more
 ./gradlew -PenableIosTargets=true \
   :shared:compileKotlinIosSimulatorArm64 :shared:compileKotlinIosArm64   # iOS, on Linux too

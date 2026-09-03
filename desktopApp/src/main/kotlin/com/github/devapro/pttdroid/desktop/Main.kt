@@ -5,11 +5,13 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.SettingsRepository
+import com.github.devapro.pttdroid.data.settings.applyLanguagePreference
 import com.github.devapro.pttdroid.di.sharedDesktopModule
 import com.github.devapro.pttdroid.di.sharedModule
 import com.github.devapro.pttdroid.model.MainAction
@@ -73,24 +75,30 @@ fun main() {
                 }
             }
 
-            PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
-                when (state.screen) {
-                    ScreenState.Screen.Main -> MainScreen(
-                        state = state,
-                        endpoint = "${settings.serverHost}:${settings.serverPort}",
-                        snackbarHostState = snackbarHostState,
-                        onAction = viewModel::onAction,
-                    )
+            val language = settings.languageMode
+            // Applied during composition, not from a LaunchedEffect: an effect runs *after* the
+            // first pass has already resolved every string against the old locale.
+            remember(language) { applyLanguagePreference(language) }
+            key(language) {
+                PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
+                    when (state.screen) {
+                        ScreenState.Screen.Main -> MainScreen(
+                            state = state,
+                            endpoint = "${settings.serverHost}:${settings.serverPort}",
+                            snackbarHostState = snackbarHostState,
+                            onAction = viewModel::onAction,
+                        )
 
-                    ScreenState.Screen.Settings -> SettingsScreen(
-                        settings = settings,
-                        // No overlay/"draw over other apps" concept on desktop; the floating-
-                        // bubble toggle in Settings just has nothing left to require.
-                        canDrawOverlay = true,
-                        onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
-                        onRequestOverlayPermission = {},
-                        onBack = { viewModel.onAction(MainAction.CloseSettings) },
-                    )
+                        ScreenState.Screen.Settings -> SettingsScreen(
+                            settings = settings,
+                            // No overlay/"draw over other apps" concept on desktop; the floating-
+                            // bubble toggle in Settings just has nothing left to require.
+                            canDrawOverlay = true,
+                            onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
+                            onRequestOverlayPermission = {},
+                            onBack = { viewModel.onAction(MainAction.CloseSettings) },
+                        )
+                    }
                 }
             }
         }

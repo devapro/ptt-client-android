@@ -6,9 +6,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.SettingsRepository
+import com.github.devapro.pttdroid.data.settings.applyLanguagePreference
 import com.github.devapro.pttdroid.model.MainAction
 import com.github.devapro.pttdroid.model.MainEvent
 import com.github.devapro.pttdroid.model.ScreenState
@@ -60,26 +62,32 @@ fun App() {
         }
     }
 
-    PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
-        when (state.screen) {
-            ScreenState.Screen.Main -> MainScreen(
-                state = state,
-                endpoint = "${settings.serverHost}:${settings.serverPort}",
-                snackbarHostState = snackbarHostState,
-                onAction = viewModel::onAction,
-            )
+    val language = settings.languageMode
+    // Applied during composition, not from a LaunchedEffect: an effect runs *after* the first
+    // pass has already resolved every string against the old locale.
+    remember(language) { applyLanguagePreference(language) }
+    key(language) {
+        PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
+            when (state.screen) {
+                ScreenState.Screen.Main -> MainScreen(
+                    state = state,
+                    endpoint = "${settings.serverHost}:${settings.serverPort}",
+                    snackbarHostState = snackbarHostState,
+                    onAction = viewModel::onAction,
+                )
 
-            ScreenState.Screen.Settings -> SettingsScreen(
-                settings = settings,
-                // No "draw over other apps" concept on iOS, same as desktop's Main.kt.
-                canDrawOverlay = true,
-                onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
-                onRequestOverlayPermission = {},
-                onBack = { viewModel.onAction(MainAction.CloseSettings) },
-                // canHostRelay defaults to this platform's own domain.canHostRelay (false on
-                // iOS), so the row is already hidden without passing it explicitly — spelled out
-                // anyway here since this is the one call site Phase 7a added on purpose.
-            )
+                ScreenState.Screen.Settings -> SettingsScreen(
+                    settings = settings,
+                    // No "draw over other apps" concept on iOS, same as desktop's Main.kt.
+                    canDrawOverlay = true,
+                    onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
+                    onRequestOverlayPermission = {},
+                    onBack = { viewModel.onAction(MainAction.CloseSettings) },
+                    // canHostRelay defaults to this platform's own domain.canHostRelay (false on
+                    // iOS), so the row is already hidden without passing it explicitly — spelled
+                    // out anyway here since this is the one call site Phase 7a added on purpose.
+                )
+            }
         }
     }
 }

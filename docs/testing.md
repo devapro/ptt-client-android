@@ -11,12 +11,12 @@
 ./gradlew :shared:testDebugUnitTest :shared:desktopTest   # 136 tests, on both targets — verified, 0 failures
 ./gradlew :app:testDebugUnitTest     # 0 — nothing left in :app after Phase 5
 ./gradlew lintDebug :shared:lintDebug              # :app 12 pre-existing findings, :shared 0
-ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 43 tests: 39 UI + 1 migration + 3 TLS (skipped without a relay); ANDROID_SERIAL picks the device
+ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 45 tests: 41 UI + 1 migration + 3 TLS (skipped without -Pandroid.testInstrumentationRunnerArguments.relayHost=...); ANDROID_SERIAL picks the device
 ```
 
 The counts and test-class breakdown below are re-verified as of Phase 8 (`:shared:testDebugUnitTest`
 and `:shared:desktopTest` each produce 136 tests with 0 failures; `:shared:connectedDebugAndroidTest`
-produces 43 with 40 passing and 3 skipped) by actually running each command, not by arithmetic on
+produces 45 with 42 passing and 3 skipped) by actually running each command, not by arithmetic on
 the table.
 
 ## Unit tests (136, all passing, on both `androidTarget` and `desktop`)
@@ -45,19 +45,19 @@ the table.
 `PinnedTrustTest` generates its certificates with `ktor-network-tls-certificates`, added as a
 **test-only** dependency — it is not in the APK.
 
-## Compose UI tests (39, all passing)
+## Compose UI tests (41, all passing)
 
 Run on a device: `ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest`. Verified on
 both a 1080x2400 phone (API 35, portrait branch) and a 2560x1600 tablet (API 34, landscape branch).
 The same instrumented source set also carries `data/settings/SettingsDataStoreMigrationTest` (1
 test, always runs) and `network/TlsRelayIntegrationTest` (3 tests, opt-in — see "Pinned TLS against
-a real relay" below), which is where the full 43 in the command at the top of this page comes from.
+a real relay" below), which is where the full 45 in the command at the top of this page comes from.
 
 | Test class | Tests | What it pins down |
 |---|---|---|
 | `ui/PTTButtonTest` | 7 | The gesture. The microphone request leaves on touch-**down**, not on release; **the release still fires when the button is disabled mid-press** and when the status changes mid-press (known-issues #20 — losing that release strands the talk floor with the microphone open); a dead control ignores touches and offers no click action; the face carries a word, not just a colour; TalkBack gets a toggle action |
 | `ui/MainScreenTest` | 11 | What the screen says and what it dispatches: ready/offline/receiving/pending wording, the offline card showing the address it cannot reach, the missing-permission case offering the fix, channel stepping and its disabled ends, the channel locked while transmitting, error dismissal, connect/disconnect, and the gear |
-| `ui/SettingsScreenTest` | 21 | The form's two jobs: making a broken relay address impossible to save, and showing the URL it will actually dial. Default hides the address rather than pre-filling a field; choosing Custom reveals it and switching back keeps what was typed; a blank address, an out-of-range port and credentials in the URL each block Save with their own message; a pasted `https://` tunnel URL brings 443 with it and turns encryption on, and turning encryption back off keeps that port instead of silently dropping to 80. Plus the security fields: the fingerprint box appears only with encryption on, a half-typed fingerprint cannot be saved, an empty one can (a tunnel needs no pin), the token is masked and saved trimmed, and hosting a relay while asking for encryption is called out |
+| `ui/SettingsScreenTest` | 23 | The form's two jobs: making a broken relay address impossible to save, and showing the URL it will actually dial. Default hides the address rather than pre-filling a field; choosing Custom reveals it and switching back keeps what was typed; a blank address, an out-of-range port and credentials in the URL each block Save with their own message; a pasted `https://` tunnel URL brings 443 with it and turns encryption on, and turning encryption back off keeps that port instead of silently dropping to 80. Plus the security fields: the fingerprint box appears only with encryption on, a half-typed fingerprint cannot be saved, an empty one can (a tunnel needs no pin), the token is masked and saved trimmed, and hosting a relay while asking for encryption is called out. Plus the appearance/language selectors: theme and language can each be forced independently of the system, and the stored value of each comes back as the selected segment |
 
 These cover the layer the JVM tests cannot reach: gesture lifecycle, semantics, and the wiring
 from a rendered control to a `MainAction`.

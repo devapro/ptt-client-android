@@ -1,6 +1,7 @@
 package com.github.devapro.pttdroid
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -25,7 +26,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.LanguageMode
 import com.github.devapro.pttdroid.data.settings.SettingsRepository
+import com.github.devapro.pttdroid.data.settings.applyLocale
 import com.github.devapro.pttdroid.model.MainAction
 import com.github.devapro.pttdroid.model.MainEvent
 import com.github.devapro.pttdroid.model.ScreenState
@@ -34,8 +37,10 @@ import com.github.devapro.pttdroid.ui.MainScreen
 import com.github.devapro.pttdroid.ui.SettingsScreen
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
 import com.github.devapro.pttdroid.viewmodel.MainActivityViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.jetbrains.compose.resources.getString
 import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
@@ -62,6 +67,42 @@ class MainActivity : ComponentActivity() {
         viewModel.onMicPermissionResult(grants[Manifest.permission.RECORD_AUDIO] == true)
     }
 
+    /**
+     * The [AppSettings] `attachBaseContext` actually read from DataStore, including the
+     * [LanguageMode] it applied to this instance's base context.
+     *
+     * `setContent` must seed `collectAsState`'s `initial` with this, not with `AppSettings()`:
+     * `settingsRepository.settings` is a cold flow whose first collection can take a beat to
+     * reach DataStore, so `AppSettings()` — [LanguageMode.SYSTEM] — would otherwise render, and be
+     * compared against, for one frame even when a different language is already stored and
+     * already applied to this very context. That phantom mismatch is what used to send this
+     * Activity into an unbounded `recreate()` loop: each recreated instance re-ran the same
+     * pre-DataStore frame and recreated again, with no exception to point at it. Seeding from the
+     * real read means the first composed value always agrees with what `attachBaseContext`
+     * applied, so a `recreate()` only fires on a genuine language change — and, as a side effect,
+     * the UI never flashes against default host/theme values before DataStore emits.
+     */
+    private var initialSettings: AppSettings = AppSettings()
+
+    override fun attachBaseContext(base: Context) {
+        // A DataStore read failure here must never turn into a launch crash — AppSettings()'s
+        // SYSTEM default is always a safe fallback. Reading it with a blocking call is
+        // unfortunate but unavoidable: attachBaseContext has no suspend equivalent, and the base
+        // context has to be replaced before super.attachBaseContext() hands it to the rest of the
+        // Activity's construction. settingsRepository resolves here because Koin is started in
+        // PTTdroidApplication.onCreate(), which the platform runs before any Activity's
+        // attachBaseContext.
+        val settings = try {
+            runBlocking { settingsRepository.settings.first() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppSettings()
+        }
+        initialSettings = settings
+        super.attachBaseContext(applyLocale(base, settings.languageMode))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // targetSdk 36 enforces edge-to-edge; the old code set the deprecated
         // window.statusBarColor, which is now a no-op. Insets are handled by the Scaffold in
@@ -72,8 +113,19 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val state by viewModel.state.collectAsStateWithLifecycle()
-            val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
+            val settings by settingsRepository.settings.collectAsState(initial = initialSettings)
             var overlayGranted by remember { mutableStateOf(canDrawOverlays()) }
+
+            // Seeded from initialSettings.languageMode — the same value collectAsState's initial
+            // just rendered — so the first composition always agrees with itself. See
+            // initialSettings's KDoc for why AppSettings()'s default must never appear here.
+            var appliedLanguage by remember { mutableStateOf(initialSettings.languageMode) }
+            LaunchedEffect(settings.languageMode) {
+                if (settings.languageMode != appliedLanguage) {
+                    appliedLanguage = settings.languageMode
+                    recreate()
+                }
+            }
 
             PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
                 when (state.screen) {

@@ -350,6 +350,10 @@ iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
             <td>Yes</td><td>Yes</td><td>Yes</td>
           </tr>
           <tr>
+            <th scope="row">UI language (English, Russian, Serbian)</th>
+            <td>Yes</td><td>Yes</td><td>Best-effort, next launch only</td>
+          </tr>
+          <tr>
             <th scope="row">Microphone and speaker</th>
             <td><code>AudioRecord</code></td>
             <td><code>javax.sound</code></td>
@@ -551,14 +555,18 @@ adb install -r -g \
     <h2>Nothing is<br>compiled in</h2>
     <div class="cols" style="margin-top:34px">
       <div>
-        <p>The relay address, display name, channel and theme are all settings. An earlier build
-        had a LAN address baked into the socket class, which made it useless on any other network
-        &mdash; so the relay address being editable, and visible, is rather the point.</p>
+        <p>The relay address, display name, channel, theme and language are all settings. An
+        earlier build had a LAN address baked into the socket class, which made it useless on any
+        other network &mdash; so the relay address being editable, and visible, is rather the
+        point.</p>
         <ul class="tight">
           <li><strong>Relay</strong> &mdash; Default, or one Custom address box that takes a host,
           a <code>host:port</code> or a whole pasted URL. Live preview either way.</li>
           <li><strong>Identity</strong> — the name others see while you hold the floor.</li>
           <li><strong>Appearance</strong> — follow the system, or force light or dark.</li>
+          <li><strong>Language</strong> — follow the system, or force English, Russian or Serbian.
+          A channel gets handed to people who don't read whatever language its owner's phone is
+          set to.</li>
           <li><strong>Hands-free</strong> — the floating button, and the on-device relay.</li>
         </ul>
       </div>

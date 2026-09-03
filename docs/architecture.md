@@ -96,7 +96,7 @@ down a transmission in flight.
 | `overlay/` | `OverlayController`, `OverlayBubbleView` | `:app` |
 | `widget/` | `PttWidget`, `PttWidgetAction`, `PttWidgetReceiver`, `PttWidgetUpdater` | `:app` |
 | `internalserver/` | `InternalPttServer` — optional on-device relay (Ktor CIO server, JVM-only, unreachable from iOS — see `domain/canHostRelay`) | `:shared` jvmCommonMain |
-| `data/settings/` | `AppSettings`, `ServerMode`, `ServerAddress`, `ThemeMode`, `CertificatePin`, `SettingsRepository` (takes a `DataStore<Preferences>` directly) — commonMain; `createAndroidSettingsDataStore(Context)`/`createDesktopSettingsDataStore()`/`createIosSettingsDataStore()` — plain platform functions, not `expect`/`actual`, called only from each platform's own DI module — see [Transport security](#transport-security) below for the trust-manager seam and the "Settings storage" note for the DataStore one | `:shared` |
+| `data/settings/` | `AppSettings`, `ServerMode`, `ServerAddress`, `ThemeMode`, `LanguageMode`, `CertificatePin`, `SettingsRepository` (takes a `DataStore<Preferences>` directly) — commonMain; `createAndroidSettingsDataStore(Context)`/`createDesktopSettingsDataStore()`/`createIosSettingsDataStore()` — plain platform functions, not `expect`/`actual`, called only from each platform's own DI module — see [Transport security](#transport-security) below for the trust-manager seam and the "Settings storage" note for the DataStore one | `:shared` |
 | `mvi/` | `ActionProcessor`, `Reducer`, `MviViewModel` | `:shared` commonMain |
 | `model/` | `MainAction`, `ScreenState`, `MainEvent` | `:shared` commonMain |
 | `reducer/` | one reducer per action (10) | `:shared` commonMain |
@@ -224,6 +224,19 @@ The two platform functions, both in `data/settings/`:
 - **`createDesktopSettingsDataStore()`** (`SettingsDataStore.desktop.kt`):
   `$XDG_CONFIG_HOME/ptt-client/settings.preferences_pb`, falling back to
   `~/.config/ptt-client/...`.
+
+`LanguageMode` is stored the same way, under `AppSettings.languageMode`, but persisting it is the
+easy half — nothing here reads `stringResource()`, so DataStore alone does not make a saved
+language show up. Applying it is a genuinely per-platform seam, `applyLanguagePreference()`
+(`data/settings/LanguageApplier.kt`, `expect`/`actual`), paired with `key(languageMode) { ... }`
+around the affected content in `Main.kt` (desktop) and `ui/App.kt` (iOS); Android instead is a
+no-op on that `expect` and forces the language through `Context.attachBaseContext()` +
+`Activity.recreate()` (`LocaleApplier.android.kt`, called once more from
+`PTTdroidApplication.onCreate()` so the notification, widget and overlay bubble get it even
+without an Activity). Why this needs forcing into view at all, rather than just calling
+`Locale.setDefault`/writing `NSUserDefaults` and being done — Compose Multiplatform exposes no
+public API for pointing resource lookup at an arbitrary locale — is written up as a gotcha in
+[`known-issues.md`](known-issues.md).
 
 ## The relay address
 
