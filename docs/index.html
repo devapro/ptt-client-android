@@ -488,16 +488,16 @@ iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
 <section class="wrap panel">
   <p class="label">Get it</p>
   <div>
-    <h2>Add the<br>repository</h2>
-    <p class="muted" style="margin-top:22px; max-width:62ch">Every tagged release is signed and
-    published to this project's own F-Droid repository by CI. In the F-Droid app, go to
-    <em>Settings&nbsp;&rarr;&nbsp;Repositories&nbsp;&rarr;&nbsp;+</em> and add:</p>
-<pre>https://devapro.github.io/ptt-client-android/fdroid/repo</pre>
-    <p class="muted small">Check the fingerprint F-Droid shows against the one printed in the
-    <a href="https://github.com/devapro/ptt-client-android/actions/workflows/release.yml">release
-    workflow's log</a> — that is the only thing tying this repository to the project. Signed APKs
-    are also attached to each
-    <a href="https://github.com/devapro/ptt-client-android/releases">GitHub release</a>.</p>
+    <h2>Download<br>the APK</h2>
+    <p class="muted" style="margin-top:22px; max-width:62ch">Every tagged release carries a signed
+    APK, attached to its
+    <a href="https://github.com/devapro/ptt-client-android/releases">release page on GitHub</a>:</p>
+<pre>github.com/devapro/ptt-client-android/releases</pre>
+    <p class="muted small">A submission to the official F-Droid catalogue is in review; once it
+    lands, F-Droid will be the better route on a phone, because it updates by itself. This project
+    runs no F-Droid repository of its own &mdash; an app installed from f-droid.org and one
+    sideloaded from here are signed by different keys, and Android will not upgrade one into the
+    other.</p>
     <p class="muted small" style="margin-top:1.1em"><strong>Desktop.</strong> The same tag
     builds installers &mdash; <code>.deb</code>, <code>.msi</code>, <code>.exe</code> and
     <code>.dmg</code>, one per runner, since jpackage cannot cross-compile &mdash; attached to that

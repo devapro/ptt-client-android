@@ -146,8 +146,8 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
   reads `ui/PttUiStatus`.
 - `docs/index.html` is the product landing page, and it covers all three platforms, not just
   Android. It is served by GitHub Pages **from a workflow** (`.github/workflows/pages.yml`), not
-  from a branch, because the same site also carries the F-Droid repository — a branch-based
-  deployment would delete it. Screenshots in `docs/img/` are real device captures; retake them
+  from a branch; **Settings → Pages → Source** must stay on *GitHub Actions*, or the workflow's
+  deployments are silently ignored. Screenshots in `docs/img/` are real device captures; retake them
   rather than editing them if the UI changes. Its **Platforms** section deliberately duplicates
   `docs/platform-support.md`'s matrix for a reader who will not open a Markdown file, and its
   **Hands-free** section is labelled Android for the same reason — change them in the same commit
@@ -166,8 +166,9 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
   of the tagged commit with no Gradle properties, so the file has to be right in the commit. The
   release workflow fails a tag that disagrees with it.
 - **Never commit key material.** `*.jks`, `*.p12`, `*.keystore` are gitignored; the app signing
-  key and the F-Droid index key live in CI secrets and can never be rotated without breaking
-  every installed copy. See [`docs/fdroid.md`](docs/fdroid.md).
+  key lives in CI secrets and can never be rotated without breaking every installed copy. There is
+  no F-Droid index key any more — this project publishes no repository of its own, and
+  distribution to F-Droid goes through the official catalogue, which signs with F-Droid's key. See [`docs/fdroid.md`](docs/fdroid.md).
 - **User-facing release text belongs in `fastlane/metadata/android/en-US/` only.** F-Droid reads
   that layout directly and the release workflow copies it into the repository index; a second
   copy in `metadata/*.yml` would drift.

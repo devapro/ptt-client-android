@@ -1,5 +1,4 @@
-# Tag-driven release: signed APK on the GitHub release, and into the project's own F-Droid
-# repository.
+# Tag-driven release: a signed APK attached to the GitHub release.
 #
 #   git tag v1.0.0 && git push origin v1.0.0
 #
@@ -7,19 +6,20 @@
 # builds a plain checkout of the tagged commit with no properties passed in — a version that
 # only existed in CI would build as something else entirely.
 #
+# This workflow does NOT publish an F-Droid repository. Distribution to F-Droid goes through the
+# official catalogue, which builds from source and signs with F-Droid's own key, so nothing here
+# signs an index. The self-hosted repository this repo used to publish was removed deliberately;
+# docs/fdroid.md records why and what it would take to bring it back.
+#
 # Required secrets (Settings -> Secrets and variables -> Actions):
 #
 #   ANDROID_KEYSTORE_BASE64     base64 of the app signing keystore
 #   ANDROID_KEYSTORE_PASSWORD
 #   ANDROID_KEY_ALIAS
 #   ANDROID_KEY_PASSWORD
-#   FDROID_KEYSTORE_BASE64      base64 of the keystore that signs the repository index
-#   FDROID_KEYSTORE_PASSWORD
-#   FDROID_KEY_ALIAS
-#   FDROID_KEY_PASSWORD
 #
-# Both keys must outlive every release: Android refuses an update signed with a different app
-# key, and F-Droid refuses an index signed with a different repo key. See docs/fdroid.md.
+# The app key must outlive every release: Android refuses an update signed with a different one.
+# See docs/fdroid.md.
 name: Release
 
 on:
@@ -191,7 +191,9 @@ jobs:
           print(f"APK reports {el['versionName']} ({el['versionCode']})")
           PY
 
-      - name: Rename for the F-Droid repository
+      # Named for the application id and version code rather than "app-release.apk", so a
+      # downloaded file still says what it is once it is out of the browser.
+      - name: Name the APK for release
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk \
@@ -210,143 +212,3 @@ jobs:
           files: dist/*.apk
           body_path: fastlane/metadata/android/en-US/changelogs/${{ steps.version.outputs.code }}.txt
 
-  fdroid:
-    name: Publish to the F-Droid repository
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      # Full history: the fdroid-repo branch has to be reachable, and a tag checkout is shallow.
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-apk
-          path: dist
-
-      - name: Check out the published repository, or start one
-        run: |
-          set -euo pipefail
-          git config --global user.name  'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git worktree add --detach fdroid-state
-          cd fdroid-state
-          if git rev-parse --verify origin/fdroid-repo >/dev/null 2>&1; then
-            git checkout -B fdroid-repo origin/fdroid-repo
-          else
-            # An orphan branch: this holds published binaries, not source history.
-            git checkout --orphan fdroid-repo
-            git rm -rf . >/dev/null 2>&1 || true
-          fi
-          mkdir -p repo metadata
-
-      - name: Install fdroidserver
-        run: |
-          python3 -m pip install --quiet --upgrade pip
-          python3 -m pip install --quiet fdroidserver
-          fdroid --version
-          python3 -c 'import yaml'
-
-      - name: Stage the APK and metadata
-        run: |
-          set -euo pipefail
-          cp dist/*.apk fdroid-state/repo/
-          cp metadata/com.github.devapro.pttdroid.yml fdroid-state/metadata/
-          # Localized text and screenshots come from the fastlane tree, so there is one copy.
-          rm -rf fdroid-state/metadata/com.github.devapro.pttdroid
-          mkdir -p fdroid-state/metadata/com.github.devapro.pttdroid
-          cp -r fastlane/metadata/android/en-US fdroid-state/metadata/com.github.devapro.pttdroid/
-
-      - name: Write the repository configuration
-        env:
-          FDROID_KEYSTORE_BASE64: ${{ secrets.FDROID_KEYSTORE_BASE64 }}
-          FDROID_KEYSTORE_PASSWORD: ${{ secrets.FDROID_KEYSTORE_PASSWORD }}
-          FDROID_KEY_ALIAS: ${{ secrets.FDROID_KEY_ALIAS }}
-          FDROID_KEY_PASSWORD: ${{ secrets.FDROID_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          # All four, for the same reason as the app signing step above: an unset secret is an
-          # empty string, and fdroid would fail later with a message about the keystore rather
-          # than about the secret that is missing.
-          missing=
-          for name in FDROID_KEYSTORE_BASE64 FDROID_KEYSTORE_PASSWORD FDROID_KEY_ALIAS FDROID_KEY_PASSWORD; do
-            [ -n "${!name:-}" ] || missing="$missing $name"
-          done
-          if [ -n "$missing" ]; then
-            echo "::error::not set:$missing. The index must be signed by a key that never changes; see docs/fdroid.md."
-            exit 1
-          fi
-          printf '%s' "$FDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/fdroid.p12"
-
-          # The URL is derived from the repository, not written down, so a fork publishes its own.
-          owner="${GITHUB_REPOSITORY%%/*}"
-          name="${GITHUB_REPOSITORY##*/}"
-
-          # Written with a YAML dumper, not a heredoc: a password containing ':' or '#' or a
-          # leading quote would otherwise produce a config file that parses as something else.
-          # It lands inside the worktree because fdroid reads it from the working directory —
-          # .gitignore plus the explicit `git add` paths below keep it out of the commit.
-          REPO_BASE="https://${owner}.github.io/${name}/fdroid/repo" \
-          KEYSTORE_FILE="$RUNNER_TEMP/fdroid.p12" \
-          python3 - <<'PY'
-          import os, yaml
-          config = {
-              'repo_url': os.environ['REPO_BASE'],
-              'repo_name': 'PTTdroid',
-              'repo_description': (
-                  "Self-hosted push-to-talk. Signed builds of PTTdroid, published straight "
-                  "from the project's CI."
-              ),
-              'repo_keyalias': os.environ['FDROID_KEY_ALIAS'],
-              'keystore': os.environ['KEYSTORE_FILE'],
-              'keystorepass': os.environ['FDROID_KEYSTORE_PASSWORD'],
-              'keypass': os.environ['FDROID_KEY_PASSWORD'],
-              'make_current_version_link': False,
-          }
-          with open('fdroid-state/config.yml', 'w') as handle:
-              yaml.safe_dump(config, handle, default_flow_style=False)
-          PY
-          chmod 600 fdroid-state/config.yml
-          printf 'config.yml\nconfig.py\nkeystore*\n*.p12\ntmp/\n' > fdroid-state/.gitignore
-
-      - name: Build the index
-        working-directory: fdroid-state
-        run: fdroid update --pretty
-
-      - name: Commit and push
-        working-directory: fdroid-state
-        run: |
-          set -euo pipefail
-          git add .gitignore repo metadata
-          if git diff --cached --quiet; then
-            echo "Nothing changed."
-            exit 0
-          fi
-          git commit -m "Publish ${{ needs.build.outputs.version_name }} (${{ needs.build.outputs.version_code }})"
-          git push origin fdroid-repo
-
-      - name: Report the repository fingerprint
-        working-directory: fdroid-state
-        run: |
-          owner="${GITHUB_REPOSITORY%%/*}"
-          name="${GITHUB_REPOSITORY##*/}"
-          {
-            echo "### F-Droid repository"
-            echo
-            echo '```'
-            echo "https://${owner}.github.io/${name}/fdroid/repo"
-            echo '```'
-            echo
-            echo "Add it in F-Droid: Settings → Repositories → +. Check the fingerprint against"
-            echo "the \"Creating signed index with this key\" line in the build log above."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  pages:
-    name: Deploy the site
-    needs: fdroid
-    uses: ./.github/workflows/pages.yml
-    permissions:
-      contents: read
-      pages: write
-      id-token: write

@@ -31,16 +31,13 @@ button and the glyph above it. The reasoning is written down in [`docs/ui-design
 
 ## Install
 
-From this project's own F-Droid repository — add it in the F-Droid app under
-**Settings → Repositories → +**:
+Every tagged release carries a signed APK on its
+[GitHub release](https://github.com/devapro/ptt-client-android/releases), alongside the desktop
+installers.
 
-```
-https://devapro.github.io/ptt-client-android/fdroid/repo
-```
-
-Every release is signed and published there by CI, alongside a signed APK on the
-[GitHub release](https://github.com/devapro/ptt-client-android/releases). How that works, and how
-to submit to the official F-Droid catalogue: [`docs/fdroid.md`](docs/fdroid.md).
+This project publishes no F-Droid repository of its own; a submission to the official F-Droid
+catalogue is in review. Why it is one channel rather than two, and what releasing involves:
+[`docs/fdroid.md`](docs/fdroid.md).
 
 ## Quick start
 
@@ -169,11 +166,9 @@ settled on the JVM alone. Coverage map: [`docs/testing.md`](docs/testing.md).
 
 [`docs/index.html`](docs/index.html) is a landing page for the whole product, with screenshots in
 [`docs/img/`](docs/img). It is published by `.github/workflows/pages.yml` on every push to `main`
-that touches `docs/`, which assembles the page *and* the F-Droid repository into one deployment —
-so **Settings → Pages → Source** has to be **GitHub Actions**, not "Deploy from a branch". A
-branch deployment would publish the landing page alone and delete the F-Droid repository out from
-under everyone who had added it. A `.nojekyll` file is present, so the folder is served as-is and
-the Markdown docs below stay readable on github.com rather than being rendered into the site.
+that touches `docs/`, so **Settings → Pages → Source** has to be **GitHub Actions**, not "Deploy
+from a branch". A `.nojekyll` file is present, so the folder is served as-is and the Markdown docs
+below stay readable on github.com rather than being rendered into the site.
 
 Its platform matrix duplicates [`docs/platform-support.md`](docs/platform-support.md) for a reader
 who will not open a Markdown file; change them together.
@@ -197,7 +192,7 @@ python3 -m http.server -d docs 8080   # then open http://localhost:8080
 | [`docs/testing.md`](docs/testing.md) | Test coverage and the manual device checklist |
 | [`docs/conventions.md`](docs/conventions.md) | Kotlin and UI style rules |
 | [`docs/known-issues.md`](docs/known-issues.md) | 33 fixed defects, open gaps, platform gotchas |
-| [`docs/fdroid.md`](docs/fdroid.md) | Releasing: signing keys, the F-Droid repository, the official catalogue |
+| [`docs/fdroid.md`](docs/fdroid.md) | Releasing: the signing key, the official F-Droid catalogue |
 
 The wire protocol is specified in the server repo, at `ptt-server/docs/protocol.md`.
 

@@ -1,7 +1,7 @@
 name: CI
 
-# Tagged releases are handled by release.yml, which signs the APK, publishes it to the project's
-# F-Droid repository and deploys the site. This workflow is the gate for everyday changes.
+# Tagged releases are handled by release.yml, which signs the APK and attaches it to the GitHub
+# release. This workflow is the gate for everyday changes.
 on:
   push:
     branches: [main]
