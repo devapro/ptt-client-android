@@ -138,13 +138,28 @@ jobs:
 
       - name: Decode the signing keystore
         env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -z "${KEYSTORE_BASE64:-}" ]; then
-            echo "::error::ANDROID_KEYSTORE_BASE64 is not set. A release must be signed; see docs/fdroid.md."
+          set -euo pipefail
+          # All four are checked here, not just the keystore. An unset secret arrives as an empty
+          # string rather than an error, and app/build.gradle.kts reads the other three straight
+          # out of the environment - so the build otherwise runs on for another 90 seconds and
+          # dies in :app:packageRelease with
+          #   Failed to read key  from store ".../release.jks": keystore password was incorrect
+          # which names neither the missing secret nor the empty key alias. This actually
+          # happened on the v1.0.0 tag.
+          missing=
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            [ -n "${!name:-}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::not set:$missing. A release must be signed; see docs/fdroid.md."
             exit 1
           fi
-          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
 
       - name: Assemble the release APK
         env:
@@ -251,8 +266,15 @@ jobs:
           FDROID_KEY_PASSWORD: ${{ secrets.FDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "${FDROID_KEYSTORE_BASE64:-}" ]; then
-            echo "::error::FDROID_KEYSTORE_BASE64 is not set. The index must be signed by a key that never changes; see docs/fdroid.md."
+          # All four, for the same reason as the app signing step above: an unset secret is an
+          # empty string, and fdroid would fail later with a message about the keystore rather
+          # than about the secret that is missing.
+          missing=
+          for name in FDROID_KEYSTORE_BASE64 FDROID_KEYSTORE_PASSWORD FDROID_KEY_ALIAS FDROID_KEY_PASSWORD; do
+            [ -n "${!name:-}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::not set:$missing. The index must be signed by a key that never changes; see docs/fdroid.md."
             exit 1
           fi
           printf '%s' "$FDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/fdroid.p12"

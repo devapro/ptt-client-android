@@ -20,16 +20,9 @@ Builds:
     gradle:
       - yes
 
-MaintainerNotes: |-
-  versionName and versionCode are not literals in app/build.gradle.kts: they are read at build
-  time from version.properties at the repository root (versionCode is derived as
-  major*10000 + minor*100 + patch). parse_androidmanifests() therefore returns Unknown/None,
-  which is why UpdateCheckData is set - versionName comes from version.properties and
-  versionCode from the recipe the upstream repository keeps in sync with it.
-  The build commit d157b35c776ac7bc054e0402688a0e62d1b5bce1 is what the v1.0.0 tag points at.
-
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9]+\.[0-9]+\.[0-9]+$
-UpdateCheckData: metadata/com.github.devapro.pttdroid.yml|CurrentVersionCode:\s*(\d+)|version.properties|versionName=([0-9.]+)
+UpdateCheckData: 
+  metadata/com.github.devapro.pttdroid.yml|CurrentVersionCode:\s*(\d+)|version.properties|versionName=([0-9.]+)
 CurrentVersion: 1.0.0
 CurrentVersionCode: 10000
