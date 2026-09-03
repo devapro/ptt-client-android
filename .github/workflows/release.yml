@@ -85,8 +85,15 @@ jobs:
           set -euo pipefail
           python3 -c 'import yaml' 2>/dev/null \
             || python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
+          # The recipe pins a commit hash, so the check below wants the tag object to resolve it
+          # against. checkout@v4 fetches neither tags nor history, so ask for just this one.
+          # It legitimately may not exist yet on a pre-tag dry run; the check handles that.
+          name="${{ steps.version.outputs.name }}"
+          git fetch --no-tags --depth 1 origin "refs/tags/v${name}:refs/tags/v${name}" 2>/dev/null || true
+
           python3 - "${{ steps.version.outputs.name }}" "${{ steps.version.outputs.code }}" <<'PY'
-          import sys, yaml
+          import re, subprocess, sys, yaml
 
           want_name, want_code = sys.argv[1], int(sys.argv[2])
           path = 'metadata/com.github.devapro.pttdroid.yml'
@@ -98,8 +105,8 @@ jobs:
           if recipe.get('CurrentVersionCode') != want_code:
               errors.append(f"CurrentVersionCode is {recipe.get('CurrentVersionCode')!r}, expected {want_code}")
 
-          # F-Droid builds the Builds entry whose commit is this tag, so one has to be there,
-          # has to agree, and must not be disabled.
+          # F-Droid builds the Builds entry for this version, so one has to be there, has to
+          # agree, and must not be disabled.
           builds = recipe.get('Builds') or []
           entries = [b for b in builds if b.get('versionCode') == want_code]
           if not entries:
@@ -107,11 +114,35 @@ jobs:
               errors.append(f"no Builds entry with versionCode {want_code} (present: {present})")
           else:
               build = entries[-1]
-              want_commit = 'v' + want_name
+              tag = 'v' + want_name
               if str(build.get('versionName')) != want_name:
                   errors.append(f"the Builds entry's versionName is {build.get('versionName')!r}, expected {want_name!r}")
-              if build.get('commit') != want_commit:
-                  errors.append(f"the Builds entry's commit is {build.get('commit')!r}, expected {want_commit!r}")
+
+              # fdroiddata review requires a full commit hash rather than a tag or branch name,
+              # so that is the expected form; a bare tag name is still accepted, because the
+              # recipe was written that way before and autoupdate generates entries like it.
+              # Not `or ''`: an all-digit hash parses as a YAML int, and 0 is falsy.
+              commit = build.get('commit')
+              commit = '' if commit is None else str(commit)
+              if commit == tag:
+                  pass
+              elif re.fullmatch(r'[0-9a-f]{40}', commit):
+                  # A hash is only right if it is the commit the tag points at - otherwise
+                  # F-Droid would build something other than what was released.
+                  resolved = subprocess.run(
+                      ['git', 'rev-parse', '--verify', '--quiet', tag + '^{commit}'],
+                      capture_output=True, text=True).stdout.strip()
+                  if not resolved:
+                      print(f"::notice::tag {tag} is not available here, so {commit} could not be"
+                            f" confirmed as the commit it points at")
+                  elif resolved != commit:
+                      errors.append(f"the Builds entry's commit is {commit}, but {tag} points at"
+                                    f" {resolved}. F-Droid builds the pinned hash, so it would"
+                                    f" ship a different commit than the one tagged.")
+              else:
+                  errors.append(f"the Builds entry's commit is {commit!r}: expected the full"
+                                f" 40-character hash of the commit {tag} points at, or {tag!r}")
+
               if build.get('disable'):
                   errors.append(f"the Builds entry is disabled: {build['disable']!r}")
 

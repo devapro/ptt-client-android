@@ -19,7 +19,7 @@ bringing it back would cost.
 |---|---|
 | `version.properties` | The version. One line, and it is the source of truth |
 | `relay.properties` | The relay **Settings → Relay → Default** dials. One line, read into `BuildConfig` at build time, so a fork ships an APK already pointing at its own relay |
-| `metadata/com.github.devapro.pttdroid.yml` | The recipe: licence, categories, links, build entry. Kept byte-identical to the fdroiddata copy, and comment-free on purpose — see below |
+| `metadata/com.github.devapro.pttdroid.yml` | The recipe: licence, categories, links, build entry. Kept byte-identical to the fdroiddata copy on `main` (the `commit` field is the one exception inside a tag — see below), and comment-free on purpose |
 | `fastlane/metadata/android/en-US/` | Everything a user reads — title, summary, description, changelogs, screenshots |
 | `.github/workflows/release.yml` | Tag → signed APK → GitHub release |
 | `.github/workflows/pages.yml` | Publishes the landing page from `docs/` |
@@ -35,7 +35,8 @@ two that drift.
 $EDITOR version.properties                                    # versionName=1.1.0
 $EDITOR fastlane/metadata/android/en-US/changelogs/10100.txt   # major*10000 + minor*100 + patch
 
-# 2. update the recipe's CurrentVersion / CurrentVersionCode, and add a Builds entry.
+# 2. update the recipe's CurrentVersion / CurrentVersionCode, and add a Builds entry whose
+#    commit is the tag name (v1.1.0) — the commit being tagged cannot contain its own hash.
 #    CurrentVersionCode is what F-Droid reads the new version code out of — see UpdateCheckData
 #    below. The release workflow fails the release if this file disagrees, because getting it
 #    wrong otherwise makes the release invisible to f-droid.org with no error to show for it.
@@ -45,6 +46,10 @@ $EDITOR metadata/com.github.devapro.pttdroid.yml
 git commit -am "Release 1.1.0"
 git tag v1.1.0
 git push origin main v1.1.0
+
+# 4. now that the tag resolves, pin the hash in both copies of the recipe: this one and the
+#    fdroiddata merge request's. fdroiddata rejects a tag or branch name in `commit`.
+git rev-parse v1.1.0^{commit}
 ```
 
 The workflow refuses the release if the tag and `version.properties` disagree, or if the
@@ -189,8 +194,18 @@ since the tag builds and ships perfectly well.
 Because that failure is silent, the release workflow checks it (`Check the F-Droid recipe against
 version.properties`, alongside the tag check) and refuses the release on a disagreement. It
 compares `CurrentVersion` and `CurrentVersionCode` against `version.properties`, and requires a
-`Builds` entry for this version whose `versionName` and `commit` match and which is not
-`disable`d — the whole set F-Droid needs to see the release, not just the one field.
+`Builds` entry for this version that is not `disable`d, whose `versionName` matches, and whose
+`commit` is either the tag name `v<version>` or **the full 40-character hash that tag points at** —
+if it is a hash, the check resolves the tag and fails when the two disagree, because F-Droid builds
+the pinned hash and would otherwise ship a different commit than the one released.
+
+### Why the two copies of the recipe differ on `commit`, briefly
+
+fdroiddata review requires a full commit hash rather than a tag or branch name. A commit cannot
+contain its own hash, so the copy **inside the tagged commit** can only carry `commit: v<version>`.
+The sequence is therefore: tag with the tag name in place, then update both copies — this one on
+`main` and fdroiddata's — to the hash the tag resolved to. That is why the release workflow accepts
+either form, and why the two copies are byte-identical on `main` but not inside the tag.
 
 The `:\s*` in that regex is not decoration either. A literal `": "` inside an unquoted YAML
 value ends the scalar, so the plain-`:` form fails to parse and `fdroid lint` rejects the file.
