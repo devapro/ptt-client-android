@@ -4,6 +4,7 @@ import com.github.devapro.pttdroid.PttLog
 import com.github.devapro.pttdroid.audio.VoicePlayerContract
 import com.github.devapro.pttdroid.audio.VoiceRecorderContract
 import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.AudioOutput
 import com.github.devapro.pttdroid.network.ConnectionEvent
 import com.github.devapro.pttdroid.network.PttConnection
 import com.github.devapro.pttdroid.network.protocol.ErrorCodes
@@ -95,6 +96,22 @@ class PttController(
     }
 
     /**
+     * Points playback at the loudspeaker or the handset receiver.
+     *
+     * Persistence is the reducer's job, not this class's — the same split [setChannel] does not
+     * make, because a channel change has to be written *before* the reconnect that reads it
+     * back, where this one only has to reach the speaker.
+     */
+    fun setAudioOutput(output: AudioOutput) {
+        player.setOutput(output)
+    }
+
+    /** Linear 0..1 gain, applied at once so a slider is audible while it is still moving. */
+    fun setPlaybackVolume(volume: Float) {
+        player.setVolume(AppSettings.clampVolume(volume))
+    }
+
+    /**
      * Asks for the floor. Audio does NOT start here — we wait for the server's `floor` message
      * confirming it is ours, so two people pressing at once cannot both transmit.
      */
@@ -132,6 +149,12 @@ class PttController(
     private suspend fun runSessionLoop() {
         while (scope.isActive) {
             val settings = settingsProvider()
+            // The stored route and level, re-applied on every connect. The player remembers
+            // them across its own prepare()/release(), but it is constructed with the defaults
+            // and never sees DataStore itself, so this is where a restored preference reaches
+            // it — before `welcome` can prepare the track, let alone before any audio arrives.
+            player.setOutput(settings.audioOutput)
+            player.setVolume(AppSettings.clampVolume(settings.playbackVolume))
             _state.update {
                 it.copy(status = ConnectionStatus.Connecting, channel = settings.channel)
             }

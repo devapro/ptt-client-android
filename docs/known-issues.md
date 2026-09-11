@@ -37,12 +37,20 @@
 | 32 | **`peers` arrived before `welcome`.** The protocol spec says `welcome` is the first thing a client sees, but the join broadcast sent the new session its own peer count first — in all three implementations. Found by an integration test that read the first control frame and got `Peers` | The join broadcast excludes the joiner (`PttChannel.broadcastLocked(exceptId = ...)` in the server repo, `ServerChannel.broadcastPeers(exceptId = ...)` here); the count is already in `welcome`. Pinned by a test in `ChannelRelayTest` |
 | 33 | **A `ToggleRow`'s label was inert.** Only the switch itself responded, so the text saying what the setting does was not a target for touch or for a screen reader — and on a tablet the switch sits at the far edge of a 640dp form | The whole row is `toggleable` with `Role.Switch`; the `Switch` takes `onCheckedChange = null` so there is one target, not two |
 | 27 | `InternalPttServerTest` raced: it released the floor on one socket and immediately requested it on another, with no ordering guarantee between them, so the server was free to answer `floor_busy` | The test waits for the release broadcast before requesting |
+| 34 | **Playback came out of the earpiece, quietly, on some devices and not others.** `AudioTrack` was built unconditionally with `USAGE_VOICE_COMMUNICATION` — accurate as a description of the stream, wrong as a default: that usage is `STREAM_VOICE_CALL`, which a good number of manufacturers route to the handset receiver at call volume, a slider the rocker does not touch outside a call. The app was loud on the developer's phone and a whisper on other people's, with no control anywhere to fix it. iOS had the same fault by design rather than by device — an `AVAudioSessionCategoryPlayAndRecord` session's default output is the receiver | `data/settings/AudioOutput`, defaulting to `SPEAKER`, plus a volume slider — both on the main screen, since both are changed mid-conversation. Speaker uses `USAGE_MEDIA` (`STREAM_MUSIC`, the rocker's own stream) on Android and `DefaultToSpeaker` + `overrideOutputAudioPort` on iOS; earpiece keeps `USAGE_VOICE_COMMUNICATION` and pins `setCommunicationDevice(TYPE_BUILTIN_EARPIECE)`. Full table in [`audio-pipeline.md`](audio-pipeline.md#output-routing-and-volume) |
+| 35 | **The iOS recorder could undo the player's audio route.** Both `IosVoiceRecorder` and `IosVoicePlayer` configured the shared `AVAudioSession` with their own copy of the same arguments. Harmless only while the copies matched: the recorder starts *later* than the player (on the floor grant, not on `welcome`), so the moment the player asked for a route the recorder did not, the recorder would silently put it back. Found while adding #34, not in the field | `IosAudioSession` (`audio/IosAudio.kt`) is the single owner of the category, the activation and the route; both classes call it |
 
 ## Still open
 
 See [`platform-support.md`](platform-support.md) for the full Android/desktop/iOS matrix these
 overlap with.
 
+- **The speaker/earpiece choice is unverified on iOS.** Like everything else in
+  `audio/IosAudio.kt`, the `AVAudioSession` route change is compile-verified against this
+  project's own Kotlin/Native platform klibs and behaviour-unverified until a real device runs
+  it — see [`audio-pipeline.md`](audio-pipeline.md#ios-capture--playback). On Android it was
+  verified end to end on a device: `out=EARPIECE`/`out=SPEAKER` in the log as the track is
+  rebuilt, and `dumpsys audio` back at `MODE_NORMAL` after switching away from the earpiece.
 - **No accounts.** The access token is one shared secret for everybody: no per-handset
   credentials, no revocation, no audit trail. Changing it means telling everyone the new one.
 - **Pinning does not rotate.** Replacing the relay's keypair means re-pairing every client. Fine

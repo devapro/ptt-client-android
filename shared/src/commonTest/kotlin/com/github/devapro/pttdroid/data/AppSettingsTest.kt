@@ -47,6 +47,25 @@ class AppSettingsTest {
     }
 
     @Test
+    fun `playback volume is clamped into range`() {
+        assertEquals(0f, AppSettings.clampVolume(-0.5f))
+        assertEquals(1f, AppSettings.clampVolume(4f))
+        assertEquals(0.25f, AppSettings.clampVolume(0.25f))
+    }
+
+    @Test
+    fun `a NaN volume falls back to full rather than propagating`() {
+        // coerceIn propagates NaN instead of clamping it, and NaN reaching
+        // AudioTrack.setVolume throws on the audio path.
+        assertEquals(AppSettings.DEFAULT_PLAYBACK_VOLUME, AppSettings.clampVolume(Float.NaN))
+    }
+
+    @Test
+    fun `a fresh install is at full volume`() {
+        assertEquals(1f, AppSettings().playbackVolume)
+    }
+
+    @Test
     fun `port range covers the whole legal space and nothing else`() {
         assertEquals(1, AppSettings.PORT_RANGE.first)
         assertEquals(65_535, AppSettings.PORT_RANGE.last)

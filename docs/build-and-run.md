@@ -17,8 +17,8 @@ read that rather than assuming.
 
 ```bash
 ./gradlew assembleDebug                       # debug APK (:app, pulling in :shared)
-./gradlew testDebugUnitTest                   # 136 JVM unit tests (:shared, on the androidTarget compilation)
-./gradlew :shared:desktopTest                  # the same 136 tests again, on the desktop compilation
+./gradlew testDebugUnitTest                   # 150 JVM unit tests (:shared, on the androidTarget compilation)
+./gradlew :shared:desktopTest                  # the same 150 tests again, on the desktop compilation
 ./gradlew lintDebug                           # :app: 12 pre-existing findings; :shared: 0
 ./gradlew assembleRelease                     # release APK — unsigned unless PTT_KEYSTORE_PATH and friends are set
 ./gradlew build                               # everything :app and :shared build for Android + desktop

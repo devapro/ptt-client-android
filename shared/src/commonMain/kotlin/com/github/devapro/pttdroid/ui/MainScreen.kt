@@ -32,11 +32,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.AudioOutput
 import com.github.devapro.pttdroid.domain.ConnectionStatus
 import com.github.devapro.pttdroid.domain.PttState
 import com.github.devapro.pttdroid.model.MainAction
 import com.github.devapro.pttdroid.model.ScreenState
 import com.github.devapro.pttdroid.shared.resources.*
+import com.github.devapro.pttdroid.ui.components.AudioOutputControl
 import com.github.devapro.pttdroid.ui.components.ChannelSelector
 import com.github.devapro.pttdroid.ui.components.ErrorBanner
 import com.github.devapro.pttdroid.ui.components.PTTButton
@@ -54,6 +56,12 @@ import org.jetbrains.compose.resources.stringResource
  *
  * In landscape the readout moves beside the button instead of above it, because the vertical
  * stack squeezed a 240.dp disc into whatever was left, which was not enough.
+ *
+ * [audioOutput] and [playbackVolume] come from the host's `SettingsRepository` collection, the
+ * same way [endpoint] does, rather than from `PttState`: they are stored preferences the screen
+ * renders, not session state `PttController` derives. [canRouteAudioOutput] defaults to this
+ * platform's own capability so desktop drops the speaker/earpiece keys and keeps the slider —
+ * see `domain/PlatformCapabilities.kt`.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +71,9 @@ fun MainScreen(
     snackbarHostState: SnackbarHostState,
     onAction: (MainAction) -> Unit,
     modifier: Modifier = Modifier,
+    audioOutput: AudioOutput = AudioOutput.DEFAULT,
+    playbackVolume: Float = AppSettings.DEFAULT_PLAYBACK_VOLUME,
+    canRouteAudioOutput: Boolean = com.github.devapro.pttdroid.domain.canRouteAudioOutput,
 ) {
     val ptt = state.ptt
     val status = PttUiStatus.of(ptt)
@@ -110,7 +121,18 @@ fun MainScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Header(status, ptt, endpoint, onAction)
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        AudioOut(
+                            output = audioOutput,
+                            volume = playbackVolume,
+                            canRoute = canRouteAudioOutput,
+                            onAction = onAction,
+                            // Capped like the status card above it: this column is half a
+                            // tablet wide, and a slider that long makes every small change a
+                            // large gesture.
+                            modifier = Modifier.widthIn(max = READOUT_MAX_WIDTH),
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
                         ChannelSelector(
                             channel = ptt.channel,
                             enabled = !ptt.isTransmitting,
@@ -141,6 +163,14 @@ fun MainScreen(
                     // channel stepper stranded at the top of a 6" phone, out of reach of the
                     // hand that is holding it.
                     Spacer(modifier = Modifier.weight(1f))
+
+                    AudioOut(
+                        output = audioOutput,
+                        volume = playbackVolume,
+                        canRoute = canRouteAudioOutput,
+                        onAction = onAction,
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
 
                     ChannelSelector(
                         channel = ptt.channel,
@@ -191,6 +221,32 @@ private fun Header(
         onDisconnect = { onAction(MainAction.Disconnect) },
     )
     }
+}
+
+/**
+ * The audio-out pill, with the three actions it can raise already bound.
+ *
+ * A local wrapper rather than three lambdas repeated in each orientation branch — the landscape
+ * and portrait layouts place the same control in two different columns, and the two copies
+ * drifting apart is exactly the class of bug `ui/PttUiStatus` exists to prevent elsewhere.
+ */
+@Composable
+private fun AudioOut(
+    output: AudioOutput,
+    volume: Float,
+    canRoute: Boolean,
+    onAction: (MainAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AudioOutputControl(
+        output = output,
+        volume = volume,
+        canRoute = canRoute,
+        onOutputChange = { onAction(MainAction.SetAudioOutput(it)) },
+        onVolumeChange = { onAction(MainAction.SetPlaybackVolume(it)) },
+        onVolumeCommit = { onAction(MainAction.SavePlaybackVolume(it)) },
+        modifier = modifier,
+    )
 }
 
 /** The button, plus the one line that says why it will not do anything. */

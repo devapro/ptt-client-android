@@ -35,6 +35,14 @@ data class AppSettings(
     val certificateSha256: String = "",
     /** Shared secret the relay requires, sent as a header. Empty when the relay is open. */
     val accessToken: String = "",
+    /**
+     * Where received audio comes out, and how loud. Not part of the settings form — they are
+     * changed from the main screen, mid-conversation, and are written by their own setters (see
+     * [SettingsRepository.setAudioOutput]/[SettingsRepository.setPlaybackVolume]) rather than by
+     * [SettingsRepository.save], exactly like [floatingButtonX]/[floatingButtonY].
+     */
+    val audioOutput: AudioOutput = AudioOutput.DEFAULT,
+    val playbackVolume: Float = DEFAULT_PLAYBACK_VOLUME,
     val floatingButtonX: Int = 0,
     val floatingButtonY: Int = 300,
 ) {
@@ -77,14 +85,27 @@ data class AppSettings(
         const val DEFAULT_CHANNEL: Int = 1
         const val DEFAULT_NAME: String = "Anon"
 
+        /** Full gain: the level everything played before there was a control at all. */
+        const val DEFAULT_PLAYBACK_VOLUME: Float = 1f
+
         val CHANNEL_RANGE: IntRange = 1..99
         val PORT_RANGE: IntRange = 1..65_535
+
+        /** Linear, not decibels — every platform's gain API here takes a plain 0..1 factor. */
+        val VOLUME_RANGE: ClosedFloatingPointRange<Float> = 0f..1f
         const val MAX_NAME_LENGTH: Int = 32
 
         /** Long enough for `openssl rand -base64 48`, which is more than anyone needs. */
         const val MAX_TOKEN_LENGTH: Int = 128
 
         fun clampChannel(value: Int): Int = value.coerceIn(CHANNEL_RANGE)
+
+        /**
+         * NaN is handled explicitly: `coerceIn` propagates it rather than clamping it, and a NaN
+         * gain reaching `AudioTrack.setVolume` is an `IllegalArgumentException` on the audio path.
+         */
+        fun clampVolume(value: Float): Float =
+            if (value.isNaN()) DEFAULT_PLAYBACK_VOLUME else value.coerceIn(VOLUME_RANGE)
 
         // `spaceToPlus = true` matches java.net.URLEncoder.encode(name, "UTF-8")'s
         // application/x-www-form-urlencoded behaviour byte-for-byte (space -> '+', everything

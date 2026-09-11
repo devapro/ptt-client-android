@@ -80,6 +80,10 @@ fun main() {
                         endpoint = "${settings.serverHost}:${settings.serverPort}",
                         snackbarHostState = snackbarHostState,
                         onAction = viewModel::onAction,
+                        // canRouteAudioOutput defaults to desktop's own `false`, so the
+                        // speaker/earpiece keys are dropped and only the volume slider shows.
+                        audioOutput = settings.audioOutput,
+                        playbackVolume = settings.playbackVolume,
                     )
 
                     ScreenState.Screen.Settings -> SettingsScreen(

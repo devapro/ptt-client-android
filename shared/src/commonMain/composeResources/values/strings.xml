@@ -41,6 +41,12 @@
     </plurals>
     <string name="main_channel_number">Channel %1$d</string>
 
+    <!-- Audio output. The label doubles as the readout: colour is reserved for the channel
+         state, so which of the two routes is live has to be spelled out in words. -->
+    <string name="audio_out_speaker">Speaker</string>
+    <string name="audio_out_earpiece">Earpiece</string>
+    <string name="audio_volume">Volume</string>
+
     <!-- Content descriptions -->
     <string name="cd_settings">Open settings</string>
     <string name="cd_back">Go back</string>
@@ -48,6 +54,9 @@
     <string name="cd_channel_down">Previous channel</string>
     <string name="cd_channel_up">Next channel</string>
     <string name="cd_dismiss_error">Dismiss</string>
+    <string name="cd_audio_out_speaker">Play through the speaker</string>
+    <string name="cd_audio_out_earpiece">Play through the earpiece</string>
+    <string name="cd_audio_volume">Playback volume</string>
 
     <!-- Notification -->
     <string name="notification_channel_name">PTT session</string>

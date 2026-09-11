@@ -44,9 +44,16 @@ touched the system theme.
 `darkColorScheme`/`lightColorScheme` silently falls back to Material's baseline purple, which is
 how a lavender chip turned up inside a segmented control on an otherwise green-and-slate screen.
 
-**Everything you touch is in the bottom half.** The button and the channel stepper are grouped
-together within thumb reach; the status card, which is read and not touched, sits at the top. The
-previous layout stacked everything from the top and left the reachable third of the phone empty.
+**Everything you touch is in the bottom half.** The button, the channel stepper and the audio-out
+pill are grouped together within thumb reach; the status card, which is read and not touched, sits
+at the top. The previous layout stacked everything from the top and left the reachable third of
+the phone empty.
+
+**A control that is not the channel state gets no colour.** The audio-out pill shows which route
+is live by *inverting* the selected key — dark glyph on a light one — and by naming it in words
+above the pill, never by tinting it. A slider painted in `primary` would be a second green thing
+on screen competing with the one that means "the channel is yours"; the same reasoning is why the
+track is `onSurfaceVariant` and not the accent.
 
 **Say why a control is dead, and offer the fix.** When the button will not do anything, the line
 underneath says which of the four reasons applies, and the one reason with a remedy — a missing
@@ -118,7 +125,9 @@ portrait                          landscape
 │ │ ● Channel clear   │ │  read   │ │ ● Channel clear │      ╭─────╮  │
 │ │   2 radios online │ │         │ │   2 radios      │     │ HOLD  │ │
 │ └───────────────────┘ │         │ └─────────────────┘      ╰─────╯  │
-│                       │         │      CHANNEL                      │
+│                       │         │       SPEAKER                     │
+│        SPEAKER        │         │  (🔊)(📞)──────●──                 │
+│  (🔊)(📞)─────●───    │         │      CHANNEL                      │
 │        CHANNEL        │         │      ( − 01 + )    Hold to talk    │
 │       ( − 01 + )      │  touch  └───────────────────────────────────┘
 │        ╭───────╮      │
@@ -127,6 +136,9 @@ portrait                          landscape
 │   Hold to talk        │
 └───────────────────────┘
 ```
+
+The audio-out pill is capped at `READOUT_MAX_WIDTH` like everything else: in landscape its column
+is half a tablet wide, and a slider that long turns every small change into a large gesture.
 
 Neither column grows past `READOUT_MAX_WIDTH` (520.dp), and the settings form stops at
 `FORM_MAX_WIDTH` (640.dp). On a tablet, a full-width status card is a metre of empty surface with

@@ -1,6 +1,8 @@
 package com.github.devapro.pttdroid.audio
 
 import com.github.devapro.pttdroid.PttLog
+import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.AudioOutput
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -132,12 +134,29 @@ class DesktopVoiceRecorder(private val scope: CoroutineScope) : VoiceRecorderCon
  * buffer has room — so [play] never calls it directly; frames instead go through a small dropping
  * channel drained by a dedicated IO coroutine, and a slow or stalled line simply loses late audio
  * rather than backing up the caller.
+ *
+ * [setVolume] is a software gain ([PcmGain]) rather than a `FloatControl`: `javax.sound.sampled`
+ * only offers `MASTER_GAIN`/`VOLUME` when the mixer happens to implement them, they are
+ * decibel-scaled with a device-dependent floor, and there is no fallback if a line reports
+ * neither. Scaling costs one pass over 640 shorts per 40 ms frame, on the drain coroutine rather
+ * than on the network path, and is skipped entirely at full volume — which is the default and
+ * therefore the common case. [setOutput] is a no-op here: a desktop's output device is chosen in the
+ * operating system and there is no second one to switch to (`domain/canRouteAudioOutput` is
+ * `false`, so the UI does not offer the choice in the first place).
  */
 class DesktopVoicePlayer(private val scope: CoroutineScope) : VoicePlayerContract {
 
     private var line: SourceDataLine? = null
     private var drainJob: Job? = null
     private var loggedFailure = false
+
+    /**
+     * Read by the drain coroutine on every frame and written from the UI thread when the slider
+     * moves. `@Volatile` rather than a lock: a torn read is impossible for a `Float` on the JVM,
+     * and the worst a stale read can do is play one 40 ms frame at the previous level.
+     */
+    @Volatile
+    private var volume: Float = AppSettings.DEFAULT_PLAYBACK_VOLUME
 
     // Recreated on every prepare() so a release() while frames are queued cannot have them played
     // back stale on the next reconnect.
@@ -181,9 +200,17 @@ class DesktopVoicePlayer(private val scope: CoroutineScope) : VoicePlayerContrac
         line = opened
         drainJob = scope.launch(Dispatchers.IO) {
             for (frame in pending) {
-                runCatching { opened.write(frame, 0, frame.size) }
+                val scaled = PcmGain.scale(frame, volume)
+                runCatching { opened.write(scaled, 0, scaled.size) }
             }
         }
+    }
+
+    /** No second output device on a desktop to move to. See the class KDoc. */
+    override fun setOutput(output: AudioOutput) = Unit
+
+    override fun setVolume(volume: Float) {
+        this.volume = AppSettings.clampVolume(volume)
     }
 
     /** Writes one received frame. No logging here — this runs per audio frame. */

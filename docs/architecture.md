@@ -89,17 +89,17 @@ down a transmission in flight.
 
 | Package | Contents | Module |
 |---|---|---|
-| `domain/` | `PttController`, `PttState` + `ConnectionStatus`, `ReconnectPolicy`, `PttSessionLauncher`, `canHostRelay` (`expect val` — see below) — commonMain; `canHostRelay = true` — jvmCommonMain; `IosPttSessionLauncher`, `canHostRelay = false` — iosMain | `:shared` |
+| `domain/` | `PttController`, `PttState` + `ConnectionStatus`, `ReconnectPolicy`, `PttSessionLauncher`, `canHostRelay`/`canRouteAudioOutput` (`expect val`s — see below) — commonMain; `canHostRelay = true` — jvmCommonMain; `canRouteAudioOutput = true` — androidMain, `= false` — desktopMain (the one capability the two JVM targets answer differently, so it cannot live in `jvmCommonMain`); `IosPttSessionLauncher`, `canHostRelay = false`, `canRouteAudioOutput = true` — iosMain | `:shared` |
 | `network/` | `PttConnection` (interface), `PttEndpoint`, `protocol/Messages.kt` — all commonMain; `KtorPttConnection` (commonMain, calls the `createPttHttpClient`/`describePlatformCause` `expect`s); `tls/PinnedTrust.kt`, `PttHttpClient.jvm.kt` — jvmCommonMain (JVM-only: OkHttp, `javax.net.ssl`); `tls/PinnedTrust.ios.kt`, `PttHttpClient.ios.kt` — iosMain (Darwin engine, `CommonCrypto`/`Security` cinterop) | `:shared` |
-| `audio/` | `AudioConfig`, `AudioContracts` (contracts), `FrameAccumulator` — commonMain; `VoiceRecorder`, `VoicePlayer` (Android `AudioRecord`/`AudioTrack`) — `:app`; `DesktopVoiceRecorder`, `DesktopVoicePlayer` (`javax.sound.sampled`) — `:shared` desktopMain; `IosVoiceRecorder`, `IosVoicePlayer` (`AVAudioEngine`/`AVAudioConverter`/`AVAudioSourceNode`, Phase 7b) — `:shared` iosMain | `:shared` commonMain / desktopMain / iosMain, and `:app` |
+| `audio/` | `AudioConfig`, `AudioContracts` (contracts), `FrameAccumulator`, `PcmGain` — commonMain; `VoiceRecorder`, `VoicePlayer` (Android `AudioRecord`/`AudioTrack` + `AudioManager` routing) — `:app`; `DesktopVoiceRecorder`, `DesktopVoicePlayer` (`javax.sound.sampled`) — `:shared` desktopMain; `IosAudioSession`, `IosVoiceRecorder`, `IosVoicePlayer` (`AVAudioEngine`/`AVAudioConverter`/`AVAudioSourceNode`, Phase 7b) — `:shared` iosMain | `:shared` commonMain / desktopMain / iosMain, and `:app` |
 | `service/` | `PttForegroundService`, `PttNotifications`, `PttServiceCommands` | `:app` |
 | `overlay/` | `OverlayController`, `OverlayBubbleView` | `:app` |
 | `widget/` | `PttWidget`, `PttWidgetAction`, `PttWidgetReceiver`, `PttWidgetUpdater` | `:app` |
 | `internalserver/` | `InternalPttServer` — optional on-device relay (Ktor CIO server, JVM-only, unreachable from iOS — see `domain/canHostRelay`) | `:shared` jvmCommonMain |
-| `data/settings/` | `AppSettings`, `ServerMode`, `ServerAddress`, `ThemeMode`, `CertificatePin`, `SettingsRepository` (takes a `DataStore<Preferences>` directly) — commonMain; `createAndroidSettingsDataStore(Context)`/`createDesktopSettingsDataStore()`/`createIosSettingsDataStore()` — plain platform functions, not `expect`/`actual`, called only from each platform's own DI module — see [Transport security](#transport-security) below for the trust-manager seam and the "Settings storage" note for the DataStore one | `:shared` |
+| `data/settings/` | `AppSettings`, `ServerMode`, `ServerAddress`, `ThemeMode`, `AudioOutput`, `CertificatePin`, `SettingsRepository` (takes a `DataStore<Preferences>` directly) — commonMain; `createAndroidSettingsDataStore(Context)`/`createDesktopSettingsDataStore()`/`createIosSettingsDataStore()` — plain platform functions, not `expect`/`actual`, called only from each platform's own DI module — see [Transport security](#transport-security) below for the trust-manager seam and the "Settings storage" note for the DataStore one | `:shared` |
 | `mvi/` | `ActionProcessor`, `Reducer`, `MviViewModel` | `:shared` commonMain |
 | `model/` | `MainAction`, `ScreenState`, `MainEvent` | `:shared` commonMain |
-| `reducer/` | one reducer per action (10) | `:shared` commonMain |
+| `reducer/` | one reducer per action (13) | `:shared` commonMain |
 | `ui/` | `PttUiStatus` (the shared state→presentation mapping), `MainScreen`, `SettingsScreen`, `App()` (iOS's UI root, `App.kt`), `components/`, `theme/`, `viewmodel/MainActivityViewModel` | `:shared` commonMain |
 | `di/` | `SharedDi.kt` (platform-independent graph) — `:shared` commonMain; `SharedDiAndroid.kt`/`SharedDiDesktop.kt`/`SharedDiIos.kt` (platform providers), `KoinIos.kt` (`initKoinIos()`, iOS's Koin entry point) — `:shared` androidMain/desktopMain/iosMain; `AppDi.kt` (Android-only: `VoiceRecorder`, `VoicePlayer`, `OverlayController`, `ServicePttSessionLauncher`) — `:app` | split across `:shared` and `:app` |
 | `MainViewController.kt` | `MainViewController()` — hosts `App()` via `ComposeUIViewController`, called from `iosApp/iosApp/ContentView.swift` | `:shared` iosMain |
@@ -142,6 +142,9 @@ Reducers no longer touch sockets or audio — they call `PttController` or `PttS
 | `OpenSettings` / `CloseSettings` | corresponding reducers | Switch the visible screen |
 | `SaveSettings(s)` | `SaveSettingsReducer` | One atomic DataStore write, closes Settings, chains to `Reconnect`, emits `ShowMessage` |
 | `DismissError` | `DismissErrorReducer` | `PttController.clearError()` |
+| `SetAudioOutput(o)` | `SetAudioOutputReducer` | Speaker ↔ earpiece: applies to the player, then persists |
+| `SetPlaybackVolume(v)` | `SetPlaybackVolumeReducer` | The slider under a finger — reaches the speaker, writes nothing |
+| `SavePlaybackVolume(v)` | `SavePlaybackVolumeReducer` | The slider let go — one DataStore write for the whole drag |
 
 ## Talk-floor flow
 
@@ -179,7 +182,7 @@ definitions depend on):
   the named `sessionScope` (`SupervisorJob + Dispatchers.IO`, exposed as the public qualifier
   `SESSION_SCOPE` rather than a private string, since three different modules now need to `get()`
   against the exact same scope instance), `SettingsRepository`, `KtorPttConnection` (bound to
-  `PttConnection`), `PttController`, all ten reducers, `MainActionProcessor`, and
+  `PttConnection`), `PttController`, all thirteen reducers, `MainActionProcessor`, and
   `MainActivityViewModel` (`viewModelOf`).
 - **`:shared` androidMain / desktopMain (`SharedDiAndroid.kt` / `SharedDiDesktop.kt`)** — each
   platform's `DataStore<Preferences>` (via `createAndroidSettingsDataStore(androidContext())` /
@@ -190,7 +193,8 @@ definitions depend on):
   no separate "desktop app" module to split those into the way Android has `:app`.
 - **`:app` (`AppDi.kt`)** — Android-only classes that need a real `Context`, `AudioRecord`/
   `AudioTrack`, or `PttForegroundService`: `VoiceRecorder`, `VoicePlayer` (bound to their
-  contracts), `ServicePttSessionLauncher`, `OverlayController`.
+  contracts; `VoicePlayer` takes `androidContext()` for the `AudioManager` half of the
+  speaker/earpiece routing), `ServicePttSessionLauncher`, `OverlayController`.
 
 `PTTdroidApplication.onCreate()` calls `startKoin { modules(sharedModule, sharedAndroidModule,
 appModule) }`; `:desktopApp`'s `main()` calls `startKoin { modules(sharedModule,

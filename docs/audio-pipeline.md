@@ -50,11 +50,60 @@ Frame.Binary ──▶ ConnectionEvent.Audio ──▶ PttController.observeEven
                                     AudioTrack.write(WRITE_NON_BLOCKING)
 ```
 
-`AudioTrack` is built with `AudioTrack.Builder`, `USAGE_VOICE_COMMUNICATION` and
-`CONTENT_TYPE_SPEECH` — this is a comms app, so routing and volume should follow the voice-call
-stream rather than media. It is prepared on `welcome` and released on disconnect.
+`AudioTrack` is built with `AudioTrack.Builder` and `CONTENT_TYPE_SPEECH`. It is prepared on
+`welcome` and released on disconnect.
 
 There is no jitter buffer beyond `AudioTrack`'s own; on a LAN this is adequate.
+
+## Output routing and volume
+
+The track used to be built unconditionally with `USAGE_VOICE_COMMUNICATION` — the honest
+description of the stream, and the wrong default. That usage puts playback on
+`STREAM_VOICE_CALL`, which on a good number of devices routes to the **handset receiver** rather
+than the loudspeaker, at the call volume rather than the media volume. The app was loud on some
+phones and a whisper held to the ear on others, with no control anywhere to change it. A
+walkie-talkie is a loudspeaker.
+
+So the route is a user choice — `data/settings/AudioOutput`, defaulting to `SPEAKER` — and each
+side of it is a different stream, not just a different device:
+
+| `AudioOutput` | Android | iOS | Desktop |
+|---|---|---|---|
+| `SPEAKER` (default) | `USAGE_MEDIA` + `CONTENT_TYPE_SPEECH` (`STREAM_MUSIC`), `MODE_NORMAL`, no communication device | `AVAudioSessionCategoryOptionDefaultToSpeaker` + `overrideOutputAudioPort(.speaker)` | n/a — one output device, chosen in the OS |
+| `EARPIECE` | `USAGE_VOICE_COMMUNICATION` (`STREAM_VOICE_CALL`), `MODE_IN_COMMUNICATION`, `setCommunicationDevice(TYPE_BUILTIN_EARPIECE)` (API 31+) or `isSpeakerphoneOn = false` below it | no category option + `overrideOutputAudioPort(.none)` | n/a |
+
+`USAGE_MEDIA` on the speaker side is deliberate and not merely "louder": it is what makes the
+volume rocker adjust *this* app while it plays, keeps the system out of call mode (which ducks
+other apps and relabels the volume UI), and reaches a Bluetooth headset over A2DP rather than
+8 kHz HFP. Echo cancellation is what `USAGE_VOICE_COMMUNICATION` buys and it is not needed here:
+PTT is half-duplex, so the microphone is never open while this is playing.
+`MODE_IN_COMMUNICATION` on the earpiece side *is* a process-wide side effect, so `VoicePlayer`
+tracks whether it was the one that set it and restores `MODE_NORMAL` on `release()`.
+
+**iOS has the same problem by default, not by device:** an
+`AVAudioSessionCategoryPlayAndRecord` session's documented default output is the receiver. Both
+levers are used — the category option as the standing preference (survives a route change), and
+`overrideOutputAudioPort` as the imperative one (takes effect mid-session, and is what actually
+works under `AVAudioSessionModeVoiceChat`, which the option alone is documented not to cover).
+`IosAudioSession` is the single owner of that configuration, because the recorder and the player
+both set the category and the recorder starts *later* (on the floor grant, not on `welcome`) —
+two copies of the arguments meant the recorder silently put the route back.
+
+**Volume** is a linear 0..1 factor, `AppSettings.playbackVolume`, applied where each platform is
+cheapest:
+
+| Platform | Where |
+|---|---|
+| Android | `AudioTrack.setVolume` — a real mixer gain, nothing per frame |
+| iOS | folded into the Int16 → Float32 conversion `IosVoicePlayer.play` already performs (`sample * (volume / 32768f)`), off the realtime render thread |
+| Desktop | `audio/PcmGain.kt`, on the drain coroutine. `javax.sound.sampled` only offers `MASTER_GAIN`/`VOLUME` when the mixer implements them, decibel-scaled with a device-dependent floor, and has no fallback when a line reports neither. Returns the input array untouched at full gain, so the default costs nothing |
+
+Both settings are owned by the main screen, not the settings form — they are changed
+mid-conversation — so `SettingsRepository.save()` deliberately does not write them, exactly as it
+does not write the floating button's position. `PttController` re-applies both to the player at
+the start of every session, before `welcome` can prepare the track: the player remembers them
+across its own `prepare()`/`release()` but is constructed with the defaults and never sees
+DataStore.
 
 ## Lifecycle
 
@@ -65,7 +114,11 @@ Both classes are owned by `PttController`, and both `release()` methods are idem
 | Create | lazily in `ensureRecord()`, reused | `prepare()`, no-op if already built |
 | Start | `start()` — `startRecording()` + one read coroutine | implicit, `AudioTrack.play()` in `prepare()` |
 | Stop | `stop()` — cancels the read job, `AudioRecord.stop()` | — |
-| Release | `release()` — stops, releases, **nulls the field** | `release()` — stops, releases, **nulls the field** |
+| Release | `release()` — stops, releases, **nulls the field** | `release()` — stops, releases, **nulls the field**, restores `MODE_NORMAL` if it took it |
+
+`setOutput` on a live `VoicePlayer` rebuilds the track — `AudioAttributes` are immutable once
+built — which costs a frame or two of silence at the moment the user taps, and that is the moment
+they are least likely to hear one. `setVolume` does not: it is a live call on the existing track.
 
 Three defects this replaced:
 
@@ -126,7 +179,7 @@ assuming the hardware or the render callback will hand it over in that shape dir
 **Capture — tap, convert, re-chunk:**
 
 ```
-AVAudioSession (PlayAndRecord / VoiceChat, active)
+IosAudioSession (PlayAndRecord / VoiceChat, active, route per AudioOutput)
     │
     ▼
 engine.inputNode.setVoiceProcessingEnabled(true)      ← AEC, iOS 13+; failure is not fatal
@@ -181,9 +234,11 @@ how far into it) is local, captured state; the only cross-thread handoff is `que
 already relies on for an analogous producer/realtime-consumer split. The ring depth (4 frames)
 matches Android's `AudioTrack` buffer depth (`AudioConfig.FRAME_BYTES * 4`).
 
-Both classes' `AVAudioSession` category/activation happens here, not in `IosPttSessionLauncher` —
-see that class's KDoc for how that interacts with `UIBackgroundModes: audio` for backgrounded
-operation. `prepare()`/`release()` are idempotent on both sides, and `PttController` always
+Both classes' `AVAudioSession` category/activation goes through `IosAudioSession` (same file),
+not through `IosPttSessionLauncher` — see that launcher's KDoc for how this interacts with
+`UIBackgroundModes: audio` for backgrounded operation, and [Output routing and
+volume](#output-routing-and-volume) for why the two classes no longer configure the session
+individually. `prepare()`/`release()` are idempotent on both sides, and `PttController` always
 releases the recorder and the player together, so `IosVoicePlayer.release()` deactivating the
 shared `AVAudioSession` never cuts off capture still in progress on the other object.
 

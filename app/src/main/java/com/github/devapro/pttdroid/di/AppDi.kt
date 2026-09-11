@@ -8,7 +8,6 @@ import com.github.devapro.pttdroid.domain.PttSessionLauncher
 import com.github.devapro.pttdroid.domain.ServicePttSessionLauncher
 import com.github.devapro.pttdroid.overlay.OverlayController
 import org.koin.android.ext.koin.androidContext
-import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
 
@@ -26,7 +25,9 @@ import org.koin.dsl.module
  */
 val appModule = module {
     single { VoiceRecorder(get(SESSION_SCOPE)) } bind VoiceRecorderContract::class
-    singleOf(::VoicePlayer) bind VoicePlayerContract::class
+    // Needs a Context of its own for AudioManager: the speaker/earpiece choice is half
+    // AudioAttributes on the track and half the process's audio mode. See VoicePlayer's KDoc.
+    single { VoicePlayer(androidContext()) } bind VoicePlayerContract::class
 
     single<PttSessionLauncher> { ServicePttSessionLauncher(androidContext()) }
 

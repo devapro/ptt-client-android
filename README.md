@@ -29,6 +29,12 @@ transmission is blue, because green here means "the channel is yours" — the op
 else holding the floor. Nothing depends on colour alone; every state also changes the word on the
 button and the glyph above it. The reasoning is written down in [`docs/ui-design.md`](docs/ui-design.md).
 
+Above the channel stepper sits the audio-out pill: **loudspeaker or earpiece**, and a volume
+slider. A walkie-talkie is a loudspeaker, so that is the default — and it is a fix as much as a
+preference, since playback used to go out as a voice-call stream, which on plenty of phones means
+the handset receiver at call volume. Desktop has one output device chosen in the operating
+system, so it gets the slider and no keys.
+
 ## Install
 
 Every tagged release carries a signed APK on its
@@ -114,7 +120,7 @@ it — new JVM-only code belongs there rather than duplicated into both. iOS sup
 seams: Ktor's Darwin engine, a hand-rolled DER certificate-pin check, and `AVAudioEngine` for
 capture and playback.
 
-The same 136 unit tests are compiled and run twice, once per JVM target. iOS Kotlin can be
+The same 150 unit tests are compiled and run twice, once per JVM target. iOS Kotlin can be
 frontend-compiled on Linux — `-PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64`, part
 of the normal gate — but only a Mac can link or run it, so `.github/workflows/ios.yml` is where iOS
 correctness is actually established. Per-platform detail:
@@ -147,8 +153,8 @@ its window is open, and the iOS build for as long as its audio session survives 
 ## Tests
 
 ```bash
-./gradlew :shared:testDebugUnitTest :shared:desktopTest       # 136 JVM tests, on both targets
-ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 39 Compose UI tests (of 43 total; 3 opt-in TLS tests need a live relay)
+./gradlew :shared:testDebugUnitTest :shared:desktopTest       # 150 JVM tests, on both targets
+ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 43 Compose UI tests (of 47 total; 3 opt-in TLS tests need a live relay)
 ./gradlew lintDebug                                          # 12 pre-existing findings, no more
 ./gradlew -PenableIosTargets=true \
   :shared:compileKotlinIosSimulatorArm64 :shared:compileKotlinIosArm64   # iOS, on Linux too

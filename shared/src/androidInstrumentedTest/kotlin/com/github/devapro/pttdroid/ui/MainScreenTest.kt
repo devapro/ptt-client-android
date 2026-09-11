@@ -5,10 +5,12 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.devapro.pttdroid.data.settings.AudioOutput
 import com.github.devapro.pttdroid.domain.ConnectionStatus
 import com.github.devapro.pttdroid.domain.PttState
 import com.github.devapro.pttdroid.model.MainAction
@@ -41,7 +43,12 @@ class MainScreenTest {
 
     private val connected = PttState(status = ConnectionStatus.Connected, channel = 5, peers = 2)
 
-    private fun show(state: ScreenState) {
+    private fun show(
+        state: ScreenState,
+        audioOutput: AudioOutput = AudioOutput.SPEAKER,
+        playbackVolume: Float = 1f,
+        canRouteAudioOutput: Boolean = true,
+    ) {
         rule.setContent {
             PTTdroidTheme(darkTheme = true) {
                 MainScreen(
@@ -49,6 +56,12 @@ class MainScreenTest {
                     endpoint = "10.0.2.2:8000",
                     snackbarHostState = SnackbarHostState(),
                     onAction = { actions += it },
+                    audioOutput = audioOutput,
+                    playbackVolume = playbackVolume,
+                    // Pinned rather than left to the platform default: this test class runs on
+                    // Android, where it is true, but the assertions below are about the control
+                    // and not about which platform is hosting it.
+                    canRouteAudioOutput = canRouteAudioOutput,
                 )
             }
         }
@@ -170,6 +183,53 @@ class MainScreenTest {
         rule.onNodeWithContentDescription(string(Res.string.cd_settings)).performClick()
 
         rule.runOnIdle { assertTrue(actions.contains(MainAction.OpenSettings)) }
+    }
+
+    @Test
+    fun the_speaker_route_is_named_and_not_only_coloured() {
+        // docs/ui-design.md: colour belongs to the channel state, so this control has to say
+        // which route is live in words.
+        show(ScreenState(ptt = connected, micPermissionGranted = true))
+
+        rule.onNodeWithText(string(Res.string.audio_out_speaker).uppercase()).assertIsDisplayed()
+    }
+
+    @Test
+    fun the_earpiece_route_is_named_too() {
+        show(
+            ScreenState(ptt = connected, micPermissionGranted = true),
+            audioOutput = AudioOutput.EARPIECE,
+        )
+
+        rule.onNodeWithText(string(Res.string.audio_out_earpiece).uppercase()).assertIsDisplayed()
+    }
+
+    @Test
+    fun the_earpiece_key_dispatches_the_route_and_the_live_one_reads_as_selected() {
+        show(ScreenState(ptt = connected, micPermissionGranted = true))
+
+        rule.onNodeWithContentDescription(string(Res.string.cd_audio_out_speaker))
+            .assertIsSelected()
+        rule.onNodeWithContentDescription(string(Res.string.cd_audio_out_earpiece)).performClick()
+
+        rule.runOnIdle {
+            assertTrue(actions.contains(MainAction.SetAudioOutput(AudioOutput.EARPIECE)))
+        }
+    }
+
+    @Test
+    fun a_platform_with_one_output_gets_the_slider_and_no_route_keys() {
+        // Desktop: domain/canRouteAudioOutput is false there, and an inert pair of keys is
+        // worse than no keys.
+        show(
+            ScreenState(ptt = connected, micPermissionGranted = true),
+            canRouteAudioOutput = false,
+        )
+
+        rule.onNodeWithText(string(Res.string.audio_volume).uppercase()).assertIsDisplayed()
+        rule.onNodeWithContentDescription(string(Res.string.cd_audio_volume)).assertIsDisplayed()
+        rule.onNodeWithContentDescription(string(Res.string.cd_audio_out_earpiece))
+            .assertDoesNotExist()
     }
 
     @Test

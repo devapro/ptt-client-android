@@ -1,6 +1,8 @@
 package com.github.devapro.pttdroid.audio
 
 import com.github.devapro.pttdroid.PttLog
+import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.AudioOutput
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.FloatVar
@@ -32,12 +34,106 @@ import platform.AVFAudio.AVAudioPCMBuffer
 import platform.AVFAudio.AVAudioPCMFormatFloat32
 import platform.AVFAudio.AVAudioPCMFormatInt16
 import platform.AVFAudio.AVAudioSession
+import platform.AVFAudio.AVAudioSessionCategoryOptionDefaultToSpeaker
+import platform.AVFAudio.AVAudioSessionCategoryOptions
 import platform.AVFAudio.AVAudioSessionCategoryPlayAndRecord
 import platform.AVFAudio.AVAudioSessionModeVoiceChat
+import platform.AVFAudio.AVAudioSessionPortOverride
+import platform.AVFAudio.AVAudioSessionPortOverrideNone
+import platform.AVFAudio.AVAudioSessionPortOverrideSpeaker
 import platform.AVFAudio.AVAudioSourceNode
 import platform.AVFAudio.setActive
 import platform.Foundation.NSError
 import platform.posix.memcpy
+
+/**
+ * The one place the shared `AVAudioSession` is configured, and the one place the speaker /
+ * earpiece choice is expressed on iOS.
+ *
+ * Both [IosVoiceRecorder] and [IosVoicePlayer] used to call `setCategory`/`setActive`
+ * themselves with identical arguments. That was harmless only for as long as the arguments
+ * stayed identical: the session is process-wide and last-writer-wins, so the moment the player
+ * asked for a route the recorder did not, `recorder.start()` — which runs *after*
+ * `player.prepare()`, on the floor grant rather than on `welcome` — would silently put the
+ * route back. Routing lives here so there is nothing to keep in sync.
+ *
+ * **Why an `AVAudioSessionPlayAndRecord` session needs telling at all:** its documented default
+ * output is the *receiver*, the earpiece you hold to your head. That is the iOS half of exactly
+ * the "why is this app so quiet" symptom [AudioOutput] exists to fix, and it is the default on
+ * every device rather than on some of them the way Android's is.
+ *
+ * Both levers are used, deliberately:
+ * - `AVAudioSessionCategoryOptionDefaultToSpeaker` is the standing preference, re-applied every
+ *   time the category is set, and survives a route change (unplugging a headset).
+ * - `overrideOutputAudioPort` is the imperative one, applied to the session as it stands. It is
+ *   what takes effect when the choice is changed mid-session, with the engines already running
+ *   and the category already set.
+ *
+ * Using only the first is the common bug: the option is documented as applying to
+ * `AVAudioSessionModeDefault`, and this session runs in `AVAudioSessionModeVoiceChat`.
+ *
+ * Like everything else in this file, this is compile-verified against this project's
+ * Kotlin/Native platform klibs and **behaviour-unverified** until a real device runs it — see
+ * [IosVoiceRecorder]'s KDoc for what that distinction covers. Checked against `klib
+ * dump-metadata` on this project's own 2.4.10 iosSimulatorArm64 platform klibs:
+ * `overrideOutputAudioPort(portOverride:error:)` is a genuine `AVAudioSession` **class member**
+ * despite being declared in an `AVAudioSession (RouteConfiguration)` category in Apple's header
+ * — unlike `setActive`, it needs no import of its own (adding the obvious
+ * `import platform.AVFAudio.overrideOutputAudioPort` is what *fails* to resolve).
+ * `AVAudioSessionCategoryOptionDefaultToSpeaker` and `AVAudioSessionPortOverrideSpeaker`/`None`
+ * are top-level `const val`s of the `ULong` typealiases used below.
+ */
+@OptIn(ExperimentalForeignApi::class)
+internal object IosAudioSession {
+
+    private var output: AudioOutput = AudioOutput.DEFAULT
+
+    /** Set by [activate], cleared by [deactivate]: [setOutput] must not wake a session nobody
+     *  is using — activating one interrupts whatever else on the phone is making noise. */
+    private var active = false
+
+    fun setOutput(value: AudioOutput) {
+        if (output == value) return
+        output = value
+        if (active) apply()
+    }
+
+    /** Idempotent: called by both the recorder and the player, in either order. */
+    fun activate() {
+        active = true
+        apply()
+    }
+
+    fun deactivate() {
+        active = false
+        runCatching { AVAudioSession.sharedInstance().setActive(false, null) }
+            .onFailure { PttLog.w(it) { "AVAudioSession deactivation failed" } }
+    }
+
+    private fun apply() {
+        runCatching {
+            val session = AVAudioSession.sharedInstance()
+            session.setCategory(
+                AVAudioSessionCategoryPlayAndRecord,
+                AVAudioSessionModeVoiceChat,
+                categoryOptions(),
+                null,
+            )
+            session.setActive(true, null)
+            session.overrideOutputAudioPort(portOverride(), null)
+        }.onFailure { PttLog.w(it) { "AVAudioSession configuration failed; audio may be routed wrong" } }
+    }
+
+    private fun categoryOptions(): AVAudioSessionCategoryOptions = when (output) {
+        AudioOutput.SPEAKER -> AVAudioSessionCategoryOptionDefaultToSpeaker
+        AudioOutput.EARPIECE -> 0u
+    }
+
+    private fun portOverride(): AVAudioSessionPortOverride = when (output) {
+        AudioOutput.SPEAKER -> AVAudioSessionPortOverrideSpeaker
+        AudioOutput.EARPIECE -> AVAudioSessionPortOverrideNone
+    }
+}
 
 /**
  * Phase 7b: real `AVAudioEngine` capture, converted to [AudioConfig]'s wire format (16 kHz mono
@@ -120,11 +216,7 @@ internal class IosVoiceRecorder(private val scope: CoroutineScope) : VoiceRecord
     override fun start() {
         if (running) return
 
-        runCatching {
-            val session = AVAudioSession.sharedInstance()
-            session.setCategory(AVAudioSessionCategoryPlayAndRecord, AVAudioSessionModeVoiceChat, 0u, null)
-            session.setActive(true, null)
-        }.onFailure { PttLog.w(it) { "AVAudioSession configuration failed; recording may not work" } }
+        IosAudioSession.activate()
 
         val inputNode = engine.inputNode
         // iOS 13+; can fail on some hardware (per the task brief) and must not be fatal to
@@ -221,8 +313,7 @@ internal class IosVoiceRecorder(private val scope: CoroutineScope) : VoiceRecord
     /** Idempotent; safe to call more than once. */
     override fun release() {
         stop()
-        runCatching { AVAudioSession.sharedInstance().setActive(false, null) }
-            .onFailure { PttLog.w(it) { "AVAudioSession deactivation failed" } }
+        IosAudioSession.deactivate()
     }
 
     private companion object {
@@ -278,11 +369,7 @@ internal class IosVoicePlayer : VoicePlayerContract {
     override fun prepare() {
         if (node != null) return
 
-        runCatching {
-            val session = AVAudioSession.sharedInstance()
-            session.setCategory(AVAudioSessionCategoryPlayAndRecord, AVAudioSessionModeVoiceChat, 0u, null)
-            session.setActive(true, null)
-        }.onFailure { PttLog.w(it) { "AVAudioSession configuration failed; playback may not work" } }
+        IosAudioSession.activate()
 
         val format = AVAudioFormat(
             AVAudioPCMFormatFloat32,
@@ -353,15 +440,35 @@ internal class IosVoicePlayer : VoicePlayerContract {
         node = sourceNode
     }
 
+    /**
+     * Playback gain, folded into the Int16 → Float32 conversion in [play] rather than set on
+     * `mainMixerNode.outputVolume`.
+     *
+     * That conversion already divides every sample by 32768, so scaling it costs one extra
+     * multiply per sample on a pass that was happening anyway — and it happens on
+     * `PttController`'s coroutine, not in the `AVAudioSourceNode` render block, which is the
+     * realtime audio thread this file is careful to keep free of anything but a `tryReceive`.
+     * Plain `var`, no lock: written from the UI's coroutine, read from the network one, and the
+     * worst a stale read can do is play one 40 ms frame at the previous level.
+     */
+    private var volume: Float = AppSettings.DEFAULT_PLAYBACK_VOLUME
+
+    override fun setOutput(output: AudioOutput) = IosAudioSession.setOutput(output)
+
+    override fun setVolume(volume: Float) {
+        this.volume = AppSettings.clampVolume(volume)
+    }
+
     /** Writes one received frame. No logging here — this runs per audio frame. */
     override fun play(pcm: ByteArray) {
         if (pcm.isEmpty() || node == null) return
         val sampleCount = pcm.size / AudioConfig.BYTES_PER_SAMPLE
+        val scale = volume / 32768f
         val floats = FloatArray(sampleCount)
         for (i in 0 until sampleCount) {
             val lo = pcm[i * 2].toInt() and 0xFF
             val hi = pcm[i * 2 + 1].toInt() and 0xFF
-            floats[i] = ((hi shl 8) or lo).toShort() / 32768f
+            floats[i] = ((hi shl 8) or lo).toShort() * scale
         }
         queue.trySend(floats)
     }
@@ -379,7 +486,6 @@ internal class IosVoicePlayer : VoicePlayerContract {
         node = null
         runCatching { engine.stop() }
         runCatching { engine.detachNode(current) }
-        runCatching { AVAudioSession.sharedInstance().setActive(false, null) }
-            .onFailure { PttLog.w(it) { "AVAudioSession deactivation failed" } }
+        IosAudioSession.deactivate()
     }
 }

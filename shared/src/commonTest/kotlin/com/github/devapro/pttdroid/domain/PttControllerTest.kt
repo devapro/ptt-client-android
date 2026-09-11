@@ -71,8 +71,16 @@ class PttControllerTest {
         var prepared = 0
         var released = 0
         val played = mutableListOf<ByteArray>()
+        // Not named `output`/`volume`: a public `var output` generates a `setOutput` with the
+        // same JVM signature as the interface method it sits next to.
+        var lastOutput: com.github.devapro.pttdroid.data.settings.AudioOutput? = null
+        var lastVolume: Float? = null
         override fun prepare() { prepared++ }
         override fun play(pcm: ByteArray) { played += pcm }
+        override fun setOutput(output: com.github.devapro.pttdroid.data.settings.AudioOutput) {
+            lastOutput = output
+        }
+        override fun setVolume(volume: Float) { lastVolume = volume }
         override fun release() { released++ }
     }
 
@@ -119,6 +127,70 @@ class PttControllerTest {
         assertTrue(endpoint.url.startsWith("wss://relay.example.com:8443/channel/4"))
         assertEquals(pin, endpoint.pinnedSha256)
         assertEquals("s3cret", endpoint.accessToken)
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `the stored route and level reach the player before any audio can`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        // The player is constructed with the defaults and never sees DataStore, so a preference
+        // restored from a previous run only reaches it here — and it has to arrive before
+        // `welcome` prepares the track, since on Android the route is baked into it.
+        val (controller, _, devices) = harness(
+            this,
+            com.github.devapro.pttdroid.data.settings.AppSettings(
+                audioOutput = com.github.devapro.pttdroid.data.settings.AudioOutput.EARPIECE,
+                playbackVolume = 0.3f,
+            ),
+        )
+        val player = devices.second
+
+        controller.start()
+
+        assertEquals(
+            com.github.devapro.pttdroid.data.settings.AudioOutput.EARPIECE,
+            player.lastOutput,
+        )
+        assertEquals(0.3f, player.lastVolume)
+        assertEquals(0, player.prepared, "the track is prepared on welcome, not on connect")
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `an out-of-range stored volume is clamped rather than passed to the speaker`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val (controller, _, devices) = harness(
+            this,
+            com.github.devapro.pttdroid.data.settings.AppSettings(playbackVolume = 4f),
+        )
+
+        controller.start()
+
+        assertEquals(1f, devices.second.lastVolume)
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `changing the route or the level goes straight to the player`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        // Applied without waiting for a reconnect: the slider has to be audible while it moves.
+        val (controller, _, devices) = harness(this)
+        val player = devices.second
+
+        controller.setAudioOutput(com.github.devapro.pttdroid.data.settings.AudioOutput.EARPIECE)
+        controller.setPlaybackVolume(0.5f)
+
+        assertEquals(
+            com.github.devapro.pttdroid.data.settings.AudioOutput.EARPIECE,
+            player.lastOutput,
+        )
+        assertEquals(0.5f, player.lastVolume)
 
         controller.shutdown()
     }

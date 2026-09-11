@@ -306,7 +306,7 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
         platforms, because there is only one of each to change.</p>
 
         <p>A single <code>:shared</code> module holds everything that is not tied to a device: the
-        socket, the talk-floor logic, the settings store, the ten reducers and the whole interface.
+        socket, the talk-floor logic, the settings store, the thirteen reducers and the whole interface.
         What is left outside it is small &mdash; the Android launcher is thirteen Kotlin files, and
         the desktop app is one <code>Window {}</code>.</p>
 
@@ -327,7 +327,7 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
               <span class="c">widget, overlay bubble</span>
 :desktopApp   <span class="c">one Window {}</span>
 iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
-        <p class="muted small">The same 136 unit tests run twice, compiled once for Android and
+        <p class="muted small">The same 150 unit tests run twice, compiled once for Android and
         once for desktop. iOS Kotlin is compiled on every push &mdash; which a Linux machine can
         do &mdash; then linked into a real framework and built through Xcode on a macOS runner,
         which is the only place that part can happen.</p>
@@ -354,6 +354,16 @@ iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
             <td><code>AudioRecord</code></td>
             <td><code>javax.sound</code></td>
             <td><code>AVAudioEngine</code></td>
+          </tr>
+          <tr>
+            <th scope="row">Speaker or earpiece</th>
+            <td>Yes</td>
+            <td class="no">&mdash; one output, chosen in the OS</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <th scope="row">Playback volume</th>
+            <td>Yes</td><td>Yes</td><td>Yes</td>
           </tr>
           <tr>
             <th scope="row">Pinned <code>wss://</code></th>
@@ -386,7 +396,8 @@ iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
     <p class="muted small" style="margin-top:26px">
       The dashes are platform limits rather than a backlog: neither desktop nor iOS gives a
       third-party app an always-on-top window over everything else, iOS cannot open the microphone
-      from a background notification handler, and the on-device relay is a JVM server. Row by row,
+      from a background notification handler, the on-device relay is a JVM server, and a desktop
+      has one output device, chosen in the operating system rather than in an app. Row by row,
       with the reasoning:
       <a href="https://github.com/devapro/ptt-client-android/blob/main/docs/platform-support.md">platform-support.md</a>.
     </p>
@@ -411,6 +422,13 @@ iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
 
         <p>And nothing depends on colour alone: every state also changes the word on the button
         and the glyph above it.</p>
+
+        <p>Above the channel stepper: <strong>loudspeaker or earpiece</strong>, and a volume
+        slider. A walkie-talkie is a loudspeaker, so that is the default. Both sit on the main
+        screen rather than behind the gear icon, because both are things you change while
+        somebody is still talking. The pill has no colour of its own — the live route is named
+        in words and the selected key is inverted — because on this screen colour belongs to the
+        state of the channel.</p>
       </div>
       <figure style="margin:0">
         <img class="device" src="img/screen-onair.png" width="360" height="800"

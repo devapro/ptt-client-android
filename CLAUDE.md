@@ -52,10 +52,10 @@ has and does not have: [`docs/platform-support.md`](docs/platform-support.md). D
 
 ```bash
 ./gradlew assembleDebug                        # debug APK (:app)
-./gradlew testDebugUnitTest                    # 136 unit tests (:shared, androidTarget compilation)
-./gradlew :shared:desktopTest                   # the same 136 tests again, desktop compilation
+./gradlew testDebugUnitTest                    # 150 unit tests (:shared, androidTarget compilation)
+./gradlew :shared:desktopTest                   # the same 150 tests again, desktop compilation
 ./gradlew lintDebug                            # :app: 12 pre-existing findings; :shared: 0
-ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 43 instrumented (39 UI + 1 migration + 3 opt-in TLS, skipped without a relay)
+ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 47 instrumented (43 UI + 1 migration + 3 opt-in TLS, skipped without a relay)
 ./gradlew build                                # full build, Android + desktop
 ./gradlew assembleRelease                      # unsigned unless PTT_KEYSTORE_PATH and friends are set
 ./gradlew :desktopApp:packageDeb               # a .deb (also packageMsi, packageDmg on their native OS)

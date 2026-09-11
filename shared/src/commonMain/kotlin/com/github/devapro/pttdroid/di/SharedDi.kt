@@ -14,8 +14,11 @@ import com.github.devapro.pttdroid.reducer.DismissErrorReducer
 import com.github.devapro.pttdroid.reducer.InitConnectionReducer
 import com.github.devapro.pttdroid.reducer.OpenSettingsReducer
 import com.github.devapro.pttdroid.reducer.ReconnectReducer
+import com.github.devapro.pttdroid.reducer.SavePlaybackVolumeReducer
 import com.github.devapro.pttdroid.reducer.SaveSettingsReducer
+import com.github.devapro.pttdroid.reducer.SetAudioOutputReducer
 import com.github.devapro.pttdroid.reducer.SetChannelReducer
+import com.github.devapro.pttdroid.reducer.SetPlaybackVolumeReducer
 import com.github.devapro.pttdroid.reducer.StartSpeakReducer
 import com.github.devapro.pttdroid.reducer.StopSpeakReducer
 import com.github.devapro.pttdroid.viewmodel.MainActivityViewModel
@@ -43,7 +46,7 @@ val SESSION_SCOPE = named("sessionScope")
 
 /**
  * Everything platform-independent: the session's own coroutine scope, the domain layer, the
- * network layer, all ten reducers, the action processor and the screen's `ViewModel`.
+ * network layer, all thirteen reducers, the action processor and the screen's `ViewModel`.
  *
  * Platform-specific pieces this graph still needs — the settings `DataStore`, the on-device relay
  * (`InternalPttServer`, JVM only) and the concrete `VoiceRecorderContract` /
@@ -103,6 +106,9 @@ private fun Module.reducerDi() {
     factoryOf(::CloseSettingsReducer)
     factoryOf(::SaveSettingsReducer)
     factoryOf(::DismissErrorReducer)
+    factoryOf(::SetAudioOutputReducer)
+    factoryOf(::SetPlaybackVolumeReducer)
+    factoryOf(::SavePlaybackVolumeReducer)
 }
 
 private fun Module.appDi() {
@@ -121,6 +127,9 @@ private fun Module.appDi() {
                 get<CloseSettingsReducer>(),
                 get<SaveSettingsReducer>(),
                 get<DismissErrorReducer>(),
+                get<SetAudioOutputReducer>(),
+                get<SetPlaybackVolumeReducer>(),
+                get<SavePlaybackVolumeReducer>(),
             ),
         )
     }

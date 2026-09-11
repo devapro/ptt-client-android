@@ -16,6 +16,16 @@ thumb reach. Rationale and the full state table: [`ui-design.md`](ui-design.md).
 - **Channel selector** — a −/+ pill over channels 1..99. The ends disable rather than silently
   doing nothing, and the control is disabled while transmitting (switching mid-transmission would
   strand the floor). Changing channel persists it and reconnects.
+- **Audio out** — a pill above the channel stepper: two keys choosing the **loudspeaker** or the
+  **earpiece**, and a volume slider. Both are here rather than behind the gear icon because both
+  are things you change *during* a conversation, with the phone already in your hand. The
+  loudspeaker is the default, and that is a fix as much as a preference: playback used to go out
+  as a voice-call stream, which on a good number of devices means the handset receiver at call
+  volume — the app was loud on some phones and a whisper on others, with nothing anywhere to
+  change it. The live route is named in words (`SPEAKER` / `EARPIECE`) and the selected key is
+  inverted rather than tinted, because colour on this screen belongs to the channel state. The
+  slider is audible while it moves and written down once, when it is let go. Desktop has one
+  output device chosen in the operating system, so it gets the slider and no keys.
 - **PTT button** — hold to talk. Solid in the status colour when it is live; hollow, keeping the
   status colour as a ring, when the *channel* is why you cannot press; flat grey only when the
   microphone permission is missing. Pulses while transmitting **and** while receiving. A haptic
