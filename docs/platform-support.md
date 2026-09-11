@@ -6,6 +6,7 @@ Compose Multiplatform module. This is the honest state of each, not the aspirati
 | | Android (`:app`) | Desktop (`:desktopApp`) | iOS (`iosApp/`) |
 |---|---|---|---|
 | Talk floor, channels, reconnect, settings | Yes | Yes | Yes |
+| Noticing a link that died without closing | Yes — OkHttp WebSocket pings (15 s) *and* the `ping`/`pong` keepalive in `PttController` | Yes — the same jvmCommonMain code as Android | Yes — the `ping`/`pong` keepalive only; the Darwin engine has no ping of its own |
 | Audio capture/playback | Yes — `AudioRecord`/`AudioTrack` | Yes — `javax.sound.sampled` (Phase 6) | Yes — `AVAudioEngine` (Phase 7b) |
 | Speaker / earpiece choice | Yes — `AudioAttributes` usage + `AudioManager` communication device | No — one output device, chosen in the OS; `domain/canRouteAudioOutput` is `false`, so the keys are omitted rather than shown inert | Yes — `AVAudioSession` category option + `overrideOutputAudioPort` |
 | Playback volume | Yes — `AudioTrack.setVolume` | Yes — software gain (`audio/PcmGain.kt`); `javax.sound.sampled` exposes no dependable volume control | Yes — folded into the Int16 → Float32 conversion |
@@ -16,7 +17,7 @@ Compose Multiplatform module. This is the honest state of each, not the aspirati
 | Cross-app overlay / floating button | Yes — `overlay/OverlayBubbleView`, a `WindowManager` window | No — no cross-app window concept on desktop | No — iOS gives third-party apps no always-on-top window API |
 | Home-screen widget | Yes — `widget/PttWidget` (Glance), toggle-only (RemoteViews cannot express hold) | No | No — an equivalent would need a separate WidgetKit extension target (its own process, no direct calls into the running app) and could not do hold-to-talk either, for the same discrete-tap reason |
 | Notification with a transmit action | Yes — `service/PttNotifications` | No — no notification concept wired up | No — iOS cannot open the microphone from a background notification handler |
-| Unit tests | `:shared:testDebugUnitTest` (150) | `:shared:desktopTest` (150, same source) | Frontend-compiled only — Kotlin/Native tests need a Mac to execute |
+| Unit tests | `:shared:testDebugUnitTest` (159) | `:shared:desktopTest` (159, same source) | Frontend-compiled only — Kotlin/Native tests need a Mac to execute |
 | UI tests | `:shared:connectedDebugAndroidTest` (47: 44 pass, 3 skip without a live relay) | None | None |
 | CI coverage | `ci.yml`, `ubuntu-latest` | `ci.yml`, `ubuntu-latest` | `ios.yml`, `macos-latest` — the only place that actually links/runs iOS code; `ci.yml` only frontend-compiles it (see below) |
 | Packaging | Signed APK + F-Droid repo (`release.yml`) | `.deb`/`.msi`/`.exe`/`.dmg` via `desktop.yml`, one runner per OS — jpackage cannot cross-compile, and a wrong-host task is silently `SKIPPED`. Unsigned and un-notarised; attached to the GitHub release on a tag | Xcode archive, not automated here |

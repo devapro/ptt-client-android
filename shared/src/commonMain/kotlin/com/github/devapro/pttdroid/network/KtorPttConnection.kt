@@ -13,6 +13,7 @@ import io.ktor.websocket.close
 import io.ktor.websocket.readBytes
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.flow.Flow
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 
 /**
@@ -82,20 +84,32 @@ class KtorPttConnection : PttConnection {
                         }
                     }
                 } finally {
-                    sessionLock.withLock { session = null }
+                    clearSession()
                 }
             }
             _events.emit(ConnectionEvent.Disconnected(reason = "closed"))
         } catch (e: CancellationException) {
-            sessionLock.withLock { session = null }
+            clearSession()
             throw e
         } catch (e: Exception) {
             // The old client logged errors and did nothing — the reconnect call was commented
             // out — so a refused connection never recovered. Surface it instead.
-            sessionLock.withLock { session = null }
+            clearSession()
             PttLog.w(e) { "WebSocket connect failed" }
             _events.emit(ConnectionEvent.Disconnected(reason = describe(e), cause = e))
         }
+    }
+
+    /**
+     * Forgets the current session, cancellation or not.
+     *
+     * [Mutex.withLock] suspends, and suspending in an already-cancelled coroutine throws before
+     * the body runs — which is exactly the path a torn-down session takes. Without
+     * [NonCancellable] the reference would survive its own socket, and the next [sendAudio]
+     * would write into a dead one instead of reporting that there is nowhere to write.
+     */
+    private suspend fun clearSession() = withContext(NonCancellable) {
+        sessionLock.withLock { session = null }
     }
 
     /**

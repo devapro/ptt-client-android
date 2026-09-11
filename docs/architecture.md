@@ -89,7 +89,7 @@ down a transmission in flight.
 
 | Package | Contents | Module |
 |---|---|---|
-| `domain/` | `PttController`, `PttState` + `ConnectionStatus`, `ReconnectPolicy`, `PttSessionLauncher`, `canHostRelay`/`canRouteAudioOutput` (`expect val`s — see below) — commonMain; `canHostRelay = true` — jvmCommonMain; `canRouteAudioOutput = true` — androidMain, `= false` — desktopMain (the one capability the two JVM targets answer differently, so it cannot live in `jvmCommonMain`); `IosPttSessionLauncher`, `canHostRelay = false`, `canRouteAudioOutput = true` — iosMain | `:shared` |
+| `domain/` | `PttController`, `PttState` + `ConnectionStatus`, `ReconnectPolicy`, `KeepalivePolicy`, `PttSessionLauncher`, `canHostRelay`/`canRouteAudioOutput` (`expect val`s — see below) — commonMain; `canHostRelay = true` — jvmCommonMain; `canRouteAudioOutput = true` — androidMain, `= false` — desktopMain (the one capability the two JVM targets answer differently, so it cannot live in `jvmCommonMain`); `IosPttSessionLauncher`, `canHostRelay = false`, `canRouteAudioOutput = true` — iosMain | `:shared` |
 | `network/` | `PttConnection` (interface), `PttEndpoint`, `protocol/Messages.kt` — all commonMain; `KtorPttConnection` (commonMain, calls the `createPttHttpClient`/`describePlatformCause` `expect`s); `tls/PinnedTrust.kt`, `PttHttpClient.jvm.kt` — jvmCommonMain (JVM-only: OkHttp, `javax.net.ssl`); `tls/PinnedTrust.ios.kt`, `PttHttpClient.ios.kt` — iosMain (Darwin engine, `CommonCrypto`/`Security` cinterop) | `:shared` |
 | `audio/` | `AudioConfig`, `AudioContracts` (contracts), `FrameAccumulator`, `PcmGain` — commonMain; `VoiceRecorder`, `VoicePlayer` (Android `AudioRecord`/`AudioTrack` + `AudioManager` routing) — `:app`; `DesktopVoiceRecorder`, `DesktopVoicePlayer` (`javax.sound.sampled`) — `:shared` desktopMain; `IosAudioSession`, `IosVoiceRecorder`, `IosVoicePlayer` (`AVAudioEngine`/`AVAudioConverter`/`AVAudioSourceNode`, Phase 7b) — `:shared` iosMain | `:shared` commonMain / desktopMain / iosMain, and `:app` |
 | `service/` | `PttForegroundService`, `PttNotifications`, `PttServiceCommands` | `:app` |
@@ -171,6 +171,33 @@ control and drives the "someone is talking" indication. See `PttController.handl
 `domain/ReconnectPolicy` — exponential backoff with full jitter, 500 ms base, 30 s cap. Observed
 sequence on a dead server: 500, 758, 1867, 2491, 4041 ms… The previous implementation slept a flat
 1000 ms and retried forever at a constant rate.
+
+## Noticing that the socket died
+
+Reconnecting is the easy half. The hard half is finding out there is anything to reconnect *to* —
+a WebSocket whose network disappeared (a NAT entry expiring, a handset walking off Wi-Fi, a relay
+killed mid-session) very often produces no close frame and no error at all. The read loop simply
+waits, and until this was in place the app kept saying "connected" until the user pressed talk and
+the first write failed. Two mechanisms, one per layer:
+
+| Layer | Who | Where | Detects in |
+|---|---|---|---|
+| WebSocket ping frames | OkHttp, below Ktor | `createPttHttpClient` (`jvmCommonMain`), `pingInterval` 15 s | ~15–30 s, Android and desktop only |
+| `ping` / `pong` control messages | `PttController` | `domain/KeepalivePolicy`, 10 s interval × 3 silent intervals | ~30 s, every platform |
+
+The transport one is a two-line engine setting and normally wins on the JVM targets; it is not
+available on iOS, whose Darwin engine has no equivalent, and Ktor's own
+`WebSockets { pingIntervalMillis }` is *not* a substitute on OkHttp — that engine implements
+`DefaultWebSocketSession` itself and answers a `Frame.Ping` with `UnsupportedFrameTypeException`.
+Both facts are in the comment at the call site; read it before changing the line.
+
+The application one is the portable backstop, and the only mechanism at all on iOS. It counts
+*intervals with no inbound frame*, not elapsed time: audio, `floor`, `peers` and `pong` all prove
+the link, so a channel with anybody talking on it is never probed, and one quiet interval earns a
+`ping` rather than a reconnect. Only a run of three with nothing coming back is treated as a dead
+socket, at which point `PttController.restart()` redials from a clean backoff. The wire contract,
+including what happens against a relay too old to know `ping`, is
+[`ptt-server/docs/protocol.md#keepalive`](../../ptt-server/docs/protocol.md#keepalive).
 
 ## Koin graph (`di/SharedDi.kt`, `SharedDiAndroid.kt`, `SharedDiDesktop.kt`, `SharedDiIos.kt`, `AppDi.kt`)
 

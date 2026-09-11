@@ -8,24 +8,24 @@
 | `shared/src/androidInstrumentedTest/` | Compose UI tests, plus the TLS and settings-migration integration tests — needs a running device or emulator. Moved here from `app/src/androidTest/` in Phase 5, since the composables and the settings/network code they exercise now live in `:shared` |
 
 ```bash
-./gradlew :shared:testDebugUnitTest :shared:desktopTest   # 150 tests, on both targets — verified, 0 failures
+./gradlew :shared:testDebugUnitTest :shared:desktopTest   # 159 tests, on both targets — verified, 0 failures
 ./gradlew :app:testDebugUnitTest     # 0 — nothing left in :app after Phase 5
 ./gradlew lintDebug :shared:lintDebug              # :app 12 pre-existing findings, :shared 0
 ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 47 tests: 43 UI + 1 migration + 3 TLS (skipped without a relay); ANDROID_SERIAL picks the device
 ```
 
 The counts and test-class breakdown below are re-verified as of the audio-routing change
-(`:shared:testDebugUnitTest` and `:shared:desktopTest` each produce 150 tests with 0 failures;
+(`:shared:testDebugUnitTest` and `:shared:desktopTest` each produce 159 tests with 0 failures;
 `:shared:connectedDebugAndroidTest` produces 47 with 44 passing and 3 skipped) by actually running
 each command, not by arithmetic on the table.
 
-## Unit tests (150, all passing, on both `androidTarget` and `desktop`)
+## Unit tests (159, all passing, on both `androidTarget` and `desktop`)
 
 | Test class | Tests | What it pins down |
 |---|---|---|
-| `network/ProtocolSerializationTest` | 7 | Exact JSON for every message type — this is a contract with a separate codebase, so the tests assert literal wire text, not just round-trips. Includes tolerance of unknown fields |
+| `network/ProtocolSerializationTest` | 9 | Exact JSON for every message type — this is a contract with a separate codebase, so the tests assert literal wire text, not just round-trips. Includes tolerance of unknown fields |
 | `domain/ReconnectPolicyTest` | 4 | Backoff grows, respects the 30 s cap, never drops below the base, is genuinely jittered, and resets |
-| `domain/PttControllerTest` | 27 | The floor state machine, driven through a fake `PttConnection`. Most importantly: **pressing PTT must not open the microphone** — only a server `floor{isSelf:true}` may start transmission. Also `floor_busy`, another user holding the floor disabling `canTalk`, release, incoming audio reaching the player, disconnect resetting state, and `clearError` dropping a stale error without dropping the session. Then the negative space: pressing while disconnected or while somebody else holds the floor sends nothing, a second press does not send a second request, releasing what we never held sends nothing, somebody else's grant clears our pending request, and losing the socket mid-transmission closes the microphone |
+| `domain/PttControllerTest` | 32 | The floor state machine, driven through a fake `PttConnection`. Most importantly: **pressing PTT must not open the microphone** — only a server `floor{isSelf:true}` may start transmission. Also `floor_busy`, another user holding the floor disabling `canTalk`, release, incoming audio reaching the player, disconnect resetting state, and `clearError` dropping a stale error without dropping the session. Then the negative space: pressing while disconnected or while somebody else holds the floor sends nothing, a second press does not send a second request, releasing what we never held sends nothing, somebody else's grant clears our pending request, and losing the socket mid-transmission closes the microphone. Then the keepalive (known-issues #36), on virtual time: a socket that has gone quiet is probed with `ping` before it is given up on and redialled after three silent intervals; a `pong` puts the countdown back to zero; audio counts as proof of life, so a channel with traffic on it is never probed; the watchdog stops with the socket it was watching; and the `malformed_message` an older relay answers `ping` with is treated as proof of life rather than as a fault to show the user |
 | `data/AppSettingsTest` | 25 | Channel clamping (the old UI allowed 0 and negatives), name URL-encoding (spaces, symbols, non-ASCII), truncation at 32 characters before the server can refuse it, the protocol version always being present, the `10.0.2.2` default, and the derived `serverHost`/`serverPort` pair never exposing which `ServerMode` produced it |
 | `data/ServerModeTest` | 5 | `ServerMode.restore`'s one compatibility duty: an install with a stored address and no stored mode is Custom, never Default, even if the address happens to equal the built-in one only by coincidence |
 | `data/ServerAddressTest` | 16 | `ServerAddress.parse` against everything people actually paste: a bare host, `host:port`, a whole URL with its own scheme and port, an IPv6 literal, credentials (rejected), whitespace from a clipboard, and a port outside the legal range |
@@ -34,7 +34,8 @@ each command, not by arithmetic on the table.
 | `ui/PttUiStatusTest` | 13 | The state→presentation mapping the app screen, the bubble, the widget and the notification all share. Precedence (holding the floor outranks everything; a dead transport outranks stale floor bookkeeping), that only `READY` offers a press, and that the control stays **live** while we hold the floor — the regression behind known-issues #20 |
 | `audio/PcmGainTest` | 5 | The software volume desktop plays through: full gain hands back the very same array (so the default allocates nothing per frame), half gain halves every sample including negative ones, zero gain is silence rather than an untouched buffer, the ends of the 16-bit range survive, and an odd trailing byte is carried through. Little-endian byte order and sign extension are exactly the arithmetic that is wrong silently — a bug here is heard as distortion, not seen as a failure |
 | `audio/FrameAccumulatorTest` | 8 | The re-chunking desktop and iOS both use to turn a capture API's arbitrary-sized reads into exact `AudioConfig.FRAME_BYTES` frames: exact frames, short reads spread over several calls, an oversized chunk spanning more than one frame, a remainder carried across calls — all hardware-independent, so it runs in `commonTest` |
-| `internalserver/InternalPttServerTest` | 5 | The on-device relay over a **real socket**: channel isolation, one-talker-at-a-time, audio without the floor rejected, invalid channel refused |
+| `network/KtorPttConnectionTest` | 1 | The OkHttp transport against a **real socket**, with the embedded relay as its peer: that the WebSocket `pingInterval` added for keepalive leaves the handshake alone (OkHttp runs that exchange below Ktor, so getting it wrong breaks every connection, not only a dying one), and that a `ping` written through `KtorPttConnection.send` comes back as a `pong` on the same event flow the controller watches |
+| `internalserver/InternalPttServerTest` | 6 | The on-device relay over a **real socket**: channel isolation, one-talker-at-a-time, audio without the floor rejected, invalid channel refused, and `ping` answered with `pong` — it is the third implementation of the server side, so the keepalive has to work against it too |
 
 ### Transport security
 

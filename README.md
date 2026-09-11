@@ -120,7 +120,7 @@ it — new JVM-only code belongs there rather than duplicated into both. iOS sup
 seams: Ktor's Darwin engine, a hand-rolled DER certificate-pin check, and `AVAudioEngine` for
 capture and playback.
 
-The same 150 unit tests are compiled and run twice, once per JVM target. iOS Kotlin can be
+The same 159 unit tests are compiled and run twice, once per JVM target. iOS Kotlin can be
 frontend-compiled on Linux — `-PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64`, part
 of the normal gate — but only a Mac can link or run it, so `.github/workflows/ios.yml` is where iOS
 correctness is actually established. Per-platform detail:
@@ -153,7 +153,7 @@ its window is open, and the iOS build for as long as its audio session survives 
 ## Tests
 
 ```bash
-./gradlew :shared:testDebugUnitTest :shared:desktopTest       # 150 JVM tests, on both targets
+./gradlew :shared:testDebugUnitTest :shared:desktopTest       # 159 JVM tests, on both targets
 ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 43 Compose UI tests (of 47 total; 3 opt-in TLS tests need a live relay)
 ./gradlew lintDebug                                          # 12 pre-existing findings, no more
 ./gradlew -PenableIosTargets=true \

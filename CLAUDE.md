@@ -52,8 +52,8 @@ has and does not have: [`docs/platform-support.md`](docs/platform-support.md). D
 
 ```bash
 ./gradlew assembleDebug                        # debug APK (:app)
-./gradlew testDebugUnitTest                    # 150 unit tests (:shared, androidTarget compilation)
-./gradlew :shared:desktopTest                   # the same 150 tests again, desktop compilation
+./gradlew testDebugUnitTest                    # 159 unit tests (:shared, androidTarget compilation)
+./gradlew :shared:desktopTest                   # the same 159 tests again, desktop compilation
 ./gradlew lintDebug                            # :app: 12 pre-existing findings; :shared: 0
 ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 47 instrumented (43 UI + 1 migration + 3 opt-in TLS, skipped without a relay)
 ./gradlew build                                # full build, Android + desktop

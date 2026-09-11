@@ -2,6 +2,7 @@ package com.github.devapro.pttdroid.internalserver
 
 import com.github.devapro.pttdroid.network.protocol.ErrorCodes
 import com.github.devapro.pttdroid.network.protocol.Floor
+import com.github.devapro.pttdroid.network.protocol.Pong
 import com.github.devapro.pttdroid.network.protocol.ProtocolError
 import com.github.devapro.pttdroid.network.protocol.ServerMessage
 import com.github.devapro.pttdroid.network.protocol.Welcome
@@ -101,6 +102,17 @@ class InternalPttServerTest {
             assertEquals(1, welcome.channel)
             assertEquals(16_000, welcome.audio.sampleRate)
             assertEquals(1_280, welcome.audio.frameBytes)
+        }
+    }
+
+    @Test
+    fun `ping is answered with pong`() = runBlocking {
+        // The third implementation of the server side of the protocol, and the keepalive has
+        // to work against a phone hosting the relay exactly as it does against `ptt-server`.
+        client.webSocket(url(1, "Alice")) {
+            expect<Welcome>()
+            send(Frame.Text("""{"type":"ping"}"""))
+            assertEquals(Pong, expect<Pong>())
         }
     }
 
