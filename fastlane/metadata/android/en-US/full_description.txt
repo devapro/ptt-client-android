@@ -13,6 +13,8 @@ main screen, on the floating button, in the widget and in the notification.
 
 * Push-to-talk over your own WebSocket relay, on a channel from 1 to 99
 * Server-arbitrated talk floor — one talker per channel, never two
+* Plays through the loudspeaker by default, with a one-tap switch to the earpiece and a volume
+  slider on the main screen
 * Keeps talking with the screen off, or while you are in another app, via a foreground service
 * A draggable floating button that shows the channel number and doubles as the transmit control
 * A home-screen widget for transmit and status

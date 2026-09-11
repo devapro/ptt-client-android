@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
@@ -39,6 +40,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             useTls = prefs[KEY_USE_TLS] ?: AppSettings.DEFAULT_TLS,
             certificateSha256 = prefs[KEY_CERT_SHA256].orEmpty(),
             accessToken = prefs[KEY_ACCESS_TOKEN].orEmpty(),
+            audioOutput = AudioOutput.fromStorage(prefs[KEY_AUDIO_OUTPUT]),
+            playbackVolume = AppSettings.clampVolume(
+                prefs[KEY_PLAYBACK_VOLUME] ?: AppSettings.DEFAULT_PLAYBACK_VOLUME,
+            ),
             floatingButtonX = prefs[KEY_FLOATING_X] ?: 0,
             floatingButtonY = prefs[KEY_FLOATING_Y] ?: 300,
         )
@@ -50,7 +55,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
      * Field-at-a-time writes meant the settings screen committed six times, emitting six
      * `AppSettings` values; a reconnect racing that could read a new host with the old port.
      * The floating-button position is deliberately not written here — the overlay owns it and
-     * updates it as the user drags.
+     * updates it as the user drags. [AppSettings.audioOutput]/[AppSettings.playbackVolume] are
+     * left out for the same reason: the main screen owns them, changes them mid-conversation,
+     * and has its own single-field setters below. This form has no control for either, so
+     * writing them here could only ever write back a stale copy.
      */
     suspend fun save(settings: AppSettings) = edit { prefs ->
         prefs[KEY_SERVER_MODE] = settings.serverMode.name
@@ -88,6 +96,19 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         prefs[KEY_HOST_SERVER] = enabled
     }
 
+    suspend fun setAudioOutput(output: AudioOutput) = edit { prefs ->
+        prefs[KEY_AUDIO_OUTPUT] = output.name
+    }
+
+    /**
+     * Written once when the slider is let go, not on every value it passes through — a drag
+     * across the whole track would otherwise be a hundred DataStore transactions, each of them
+     * a full re-serialisation of the preferences file.
+     */
+    suspend fun setPlaybackVolume(volume: Float) = edit { prefs ->
+        prefs[KEY_PLAYBACK_VOLUME] = AppSettings.clampVolume(volume)
+    }
+
     suspend fun setFloatingButtonPosition(x: Int, y: Int) = edit { prefs ->
         prefs[KEY_FLOATING_X] = x
         prefs[KEY_FLOATING_Y] = y
@@ -110,6 +131,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val KEY_USE_TLS = booleanPreferencesKey("use_tls")
         val KEY_CERT_SHA256 = stringPreferencesKey("certificate_sha256")
         val KEY_ACCESS_TOKEN = stringPreferencesKey("access_token")
+        val KEY_AUDIO_OUTPUT = stringPreferencesKey("audio_output")
+        val KEY_PLAYBACK_VOLUME = floatPreferencesKey("playback_volume")
         val KEY_FLOATING_X = intPreferencesKey("floating_button_x")
         val KEY_FLOATING_Y = intPreferencesKey("floating_button_y")
     }

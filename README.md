@@ -33,18 +33,21 @@ transmission is blue, because green here means "the channel is yours" — the op
 else holding the floor. Nothing depends on colour alone; every state also changes the word on the
 button and the glyph above it. The reasoning is written down in [`docs/ui-design.md`](docs/ui-design.md).
 
+Above the channel stepper sits the audio-out pill: **loudspeaker or earpiece**, and a volume
+slider. A walkie-talkie is a loudspeaker, so that is the default — and it is a fix as much as a
+preference, since playback used to go out as a voice-call stream, which on plenty of phones means
+the handset receiver at call volume. Desktop has one output device chosen in the operating
+system, so it gets the slider and no keys.
+
 ## Install
 
-From this project's own F-Droid repository — add it in the F-Droid app under
-**Settings → Repositories → +**:
+Every tagged release carries a signed APK on its
+[GitHub release](https://github.com/devapro/ptt-client-android/releases), alongside the desktop
+installers.
 
-```
-https://devapro.github.io/ptt-client-android/fdroid/repo
-```
-
-Every release is signed and published there by CI, alongside a signed APK on the
-[GitHub release](https://github.com/devapro/ptt-client-android/releases). How that works, and how
-to submit to the official F-Droid catalogue: [`docs/fdroid.md`](docs/fdroid.md).
+This project publishes no F-Droid repository of its own; a submission to the official F-Droid
+catalogue is in review. Why it is one channel rather than two, and what releasing involves:
+[`docs/fdroid.md`](docs/fdroid.md).
 
 ## Quick start
 
@@ -121,7 +124,7 @@ it — new JVM-only code belongs there rather than duplicated into both. iOS sup
 seams: Ktor's Darwin engine, a hand-rolled DER certificate-pin check, and `AVAudioEngine` for
 capture and playback.
 
-The same 136 unit tests are compiled and run twice, once per JVM target. iOS Kotlin can be
+The same 159 unit tests are compiled and run twice, once per JVM target. iOS Kotlin can be
 frontend-compiled on Linux — `-PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64`, part
 of the normal gate — but only a Mac can link or run it, so `.github/workflows/ios.yml` is where iOS
 correctness is actually established. Per-platform detail:
@@ -154,8 +157,8 @@ its window is open, and the iOS build for as long as its audio session survives 
 ## Tests
 
 ```bash
-./gradlew :shared:testDebugUnitTest :shared:desktopTest       # 136 JVM tests, on both targets
-ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 41 Compose UI tests (of 45 total; 3 opt-in TLS tests need a live relay)
+./gradlew :shared:testDebugUnitTest :shared:desktopTest       # 164 JVM tests, on both targets
+ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 45 Compose UI tests (of 49 total; 3 opt-in TLS tests need a live relay)
 ./gradlew lintDebug                                          # 12 pre-existing findings, no more
 ./gradlew -PenableIosTargets=true \
   :shared:compileKotlinIosSimulatorArm64 :shared:compileKotlinIosArm64   # iOS, on Linux too
@@ -173,11 +176,9 @@ settled on the JVM alone. Coverage map: [`docs/testing.md`](docs/testing.md).
 
 [`docs/index.html`](docs/index.html) is a landing page for the whole product, with screenshots in
 [`docs/img/`](docs/img). It is published by `.github/workflows/pages.yml` on every push to `main`
-that touches `docs/`, which assembles the page *and* the F-Droid repository into one deployment —
-so **Settings → Pages → Source** has to be **GitHub Actions**, not "Deploy from a branch". A
-branch deployment would publish the landing page alone and delete the F-Droid repository out from
-under everyone who had added it. A `.nojekyll` file is present, so the folder is served as-is and
-the Markdown docs below stay readable on github.com rather than being rendered into the site.
+that touches `docs/`, so **Settings → Pages → Source** has to be **GitHub Actions**, not "Deploy
+from a branch". A `.nojekyll` file is present, so the folder is served as-is and the Markdown docs
+below stay readable on github.com rather than being rendered into the site.
 
 Its platform matrix duplicates [`docs/platform-support.md`](docs/platform-support.md) for a reader
 who will not open a Markdown file; change them together.
@@ -201,7 +202,7 @@ python3 -m http.server -d docs 8080   # then open http://localhost:8080
 | [`docs/testing.md`](docs/testing.md) | Test coverage and the manual device checklist |
 | [`docs/conventions.md`](docs/conventions.md) | Kotlin and UI style rules |
 | [`docs/known-issues.md`](docs/known-issues.md) | 33 fixed defects, open gaps, platform gotchas |
-| [`docs/fdroid.md`](docs/fdroid.md) | Releasing: signing keys, the F-Droid repository, the official catalogue |
+| [`docs/fdroid.md`](docs/fdroid.md) | Releasing: the signing key, the official F-Droid catalogue |
 
 The wire protocol is specified in the server repo, at `ptt-server/docs/protocol.md`.
 

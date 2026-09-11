@@ -7,6 +7,8 @@ import com.github.devapro.pttdroid.network.protocol.ErrorCodes
 import com.github.devapro.pttdroid.network.protocol.Floor
 import com.github.devapro.pttdroid.network.protocol.PROTOCOL_VERSION
 import com.github.devapro.pttdroid.network.protocol.Peers
+import com.github.devapro.pttdroid.network.protocol.Ping
+import com.github.devapro.pttdroid.network.protocol.Pong
 import com.github.devapro.pttdroid.network.protocol.ProtocolError
 import com.github.devapro.pttdroid.network.protocol.ServerMessage
 import com.github.devapro.pttdroid.network.protocol.TalkRelease
@@ -285,9 +287,18 @@ class InternalPttServer {
             return
         }
 
+        // Answered before the channel lookup and outside the lock: a liveness probe depends on
+        // no channel state, and must not queue behind a floor change.
+        if (message is Ping) {
+            from.send(Pong)
+            return
+        }
+
         lock.withLock {
             val channel = channels[channelId] ?: return@withLock
             when (message) {
+                Ping -> Unit // answered above
+
                 TalkRequest -> when (channel.floorHolderId) {
                     null -> {
                         channel.floorHolderId = from.id

@@ -134,6 +134,8 @@ class MainActivity : ComponentActivity() {
                         endpoint = "${settings.serverHost}:${settings.serverPort}",
                         snackbarHostState = snackbarHostState,
                         onAction = viewModel::onAction,
+                        audioOutput = settings.audioOutput,
+                        playbackVolume = settings.playbackVolume,
                     )
 
                     ScreenState.Screen.Settings -> SettingsScreen(

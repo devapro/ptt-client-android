@@ -6,6 +6,8 @@ import com.github.devapro.pttdroid.network.protocol.ClientMessage
 import com.github.devapro.pttdroid.network.protocol.ErrorCodes
 import com.github.devapro.pttdroid.network.protocol.Floor
 import com.github.devapro.pttdroid.network.protocol.Peers
+import com.github.devapro.pttdroid.network.protocol.Ping
+import com.github.devapro.pttdroid.network.protocol.Pong
 import com.github.devapro.pttdroid.network.protocol.ProtocolError
 import com.github.devapro.pttdroid.network.protocol.TalkRelease
 import com.github.devapro.pttdroid.network.protocol.TalkRequest
@@ -18,6 +20,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 
@@ -71,8 +74,16 @@ class PttControllerTest {
         var prepared = 0
         var released = 0
         val played = mutableListOf<ByteArray>()
+        // Not named `output`/`volume`: a public `var output` generates a `setOutput` with the
+        // same JVM signature as the interface method it sits next to.
+        var lastOutput: com.github.devapro.pttdroid.data.settings.AudioOutput? = null
+        var lastVolume: Float? = null
         override fun prepare() { prepared++ }
         override fun play(pcm: ByteArray) { played += pcm }
+        override fun setOutput(output: com.github.devapro.pttdroid.data.settings.AudioOutput) {
+            lastOutput = output
+        }
+        override fun setVolume(volume: Float) { lastVolume = volume }
         override fun release() { released++ }
     }
 
@@ -119,6 +130,70 @@ class PttControllerTest {
         assertTrue(endpoint.url.startsWith("wss://relay.example.com:8443/channel/4"))
         assertEquals(pin, endpoint.pinnedSha256)
         assertEquals("s3cret", endpoint.accessToken)
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `the stored route and level reach the player before any audio can`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        // The player is constructed with the defaults and never sees DataStore, so a preference
+        // restored from a previous run only reaches it here — and it has to arrive before
+        // `welcome` prepares the track, since on Android the route is baked into it.
+        val (controller, _, devices) = harness(
+            this,
+            com.github.devapro.pttdroid.data.settings.AppSettings(
+                audioOutput = com.github.devapro.pttdroid.data.settings.AudioOutput.EARPIECE,
+                playbackVolume = 0.3f,
+            ),
+        )
+        val player = devices.second
+
+        controller.start()
+
+        assertEquals(
+            com.github.devapro.pttdroid.data.settings.AudioOutput.EARPIECE,
+            player.lastOutput,
+        )
+        assertEquals(0.3f, player.lastVolume)
+        assertEquals(0, player.prepared, "the track is prepared on welcome, not on connect")
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `an out-of-range stored volume is clamped rather than passed to the speaker`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val (controller, _, devices) = harness(
+            this,
+            com.github.devapro.pttdroid.data.settings.AppSettings(playbackVolume = 4f),
+        )
+
+        controller.start()
+
+        assertEquals(1f, devices.second.lastVolume)
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `changing the route or the level goes straight to the player`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        // Applied without waiting for a reconnect: the slider has to be audible while it moves.
+        val (controller, _, devices) = harness(this)
+        val player = devices.second
+
+        controller.setAudioOutput(com.github.devapro.pttdroid.data.settings.AudioOutput.EARPIECE)
+        controller.setPlaybackVolume(0.5f)
+
+        assertEquals(
+            com.github.devapro.pttdroid.data.settings.AudioOutput.EARPIECE,
+            player.lastOutput,
+        )
+        assertEquals(0.5f, player.lastVolume)
 
         controller.shutdown()
     }
@@ -548,6 +623,114 @@ class PttControllerTest {
         connection.inbound.emit(ConnectionEvent.Audio(byteArrayOf(9, 9)))
 
         assertEquals(1, fakes.second.played.size)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `a socket gone silent is probed, then given up on`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        // The defect this exists for: a link that dies without a close frame leaves the read
+        // loop waiting for a frame that will never come, and the app went on reporting
+        // "connected" until the user pressed talk and the first write failed.
+        val policy = KeepalivePolicy()
+        val (controller, connection, _) = harness(this)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+
+        advanceTimeBy(policy.intervalMs + 1)
+        assertEquals(listOf<ClientMessage>(Ping), connection.sent, "one quiet interval earns a probe")
+
+        advanceTimeBy(policy.intervalMs)
+        assertEquals(listOf<ClientMessage>(Ping, Ping), connection.sent)
+        assertEquals(1, connection.connectCalls, "not given up on yet")
+
+        advanceTimeBy(policy.intervalMs)
+        assertEquals(2, connection.connectCalls, "nothing came back at all: redial")
+        assertFalse(controller.state.value.isConnected)
+        assertEquals("The relay stopped responding", controller.state.value.lastError)
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `an answered probe puts the countdown back to zero`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val policy = KeepalivePolicy()
+        val (controller, connection, _) = harness(this)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+
+        advanceTimeBy(policy.intervalMs + 1)
+        assertEquals(listOf<ClientMessage>(Ping), connection.sent)
+        connection.inbound.emit(ConnectionEvent.Control(Pong))
+
+        advanceTimeBy(policy.timeoutMs)
+
+        assertEquals(1, connection.connectCalls, "answered: the session is kept")
+        assertTrue(controller.state.value.isConnected)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `traffic on the channel is proof enough and earns no probe`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        // Audio says as much about the link as a pong does, and a busy channel should not be
+        // paying for probes on top of the frames it is already carrying.
+        val policy = KeepalivePolicy()
+        val (controller, connection, _) = harness(this)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+
+        repeat(6) {
+            advanceTimeBy(policy.intervalMs - 1_000)
+            connection.inbound.emit(ConnectionEvent.Audio(byteArrayOf(1, 2)))
+        }
+
+        assertTrue(connection.sent.isEmpty(), "a channel with audio on it is never probed")
+        assertEquals(1, connection.connectCalls)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `the watchdog stops with the socket it was watching`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val (controller, connection, _) = harness(this)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Disconnected("closed"))
+
+        advanceTimeBy(KeepalivePolicy().timeoutMs * 2)
+
+        assertTrue(connection.sent.isEmpty(), "there is no socket left to probe")
+        controller.shutdown()
+    }
+
+    @Test
+    fun `a malformed_message answer proves the link without alarming anybody`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        // What a relay older than `ping` replies with. It is still an answer, so the link is
+        // demonstrably alive; putting "Unparseable control message" on a banner would only
+        // make a working setup look broken.
+        val policy = KeepalivePolicy()
+        val (controller, connection, _) = harness(this)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+
+        advanceTimeBy(policy.intervalMs + 1)
+        connection.inbound.emit(
+            ConnectionEvent.Control(
+                ProtocolError(ErrorCodes.MALFORMED_MESSAGE, "Unparseable control message"),
+            ),
+        )
+        advanceTimeBy(policy.timeoutMs)
+
+        assertEquals(1, connection.connectCalls, "an error is still an answer")
+        assertEquals(null, controller.state.value.lastError)
         controller.shutdown()
     }
 }

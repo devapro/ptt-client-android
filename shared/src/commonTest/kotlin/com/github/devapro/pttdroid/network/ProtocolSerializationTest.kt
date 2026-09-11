@@ -3,6 +3,8 @@ package com.github.devapro.pttdroid.network
 import com.github.devapro.pttdroid.network.protocol.AudioParams
 import com.github.devapro.pttdroid.network.protocol.Floor
 import com.github.devapro.pttdroid.network.protocol.Peers
+import com.github.devapro.pttdroid.network.protocol.Ping
+import com.github.devapro.pttdroid.network.protocol.Pong
 import com.github.devapro.pttdroid.network.protocol.ProtocolError
 import com.github.devapro.pttdroid.network.protocol.TalkRelease
 import com.github.devapro.pttdroid.network.protocol.TalkRequest
@@ -28,6 +30,16 @@ class ProtocolSerializationTest {
     @Test
     fun `talk_release encodes to the documented shape`() {
         assertEquals("""{"type":"talk_release"}""", TalkRelease.encode())
+    }
+
+    @Test
+    fun `ping encodes to the documented shape`() {
+        assertEquals("""{"type":"ping"}""", Ping.encode())
+    }
+
+    @Test
+    fun `pong decodes`() {
+        assertEquals(Pong, decodeServerMessage("""{"type":"pong"}"""))
     }
 
     @Test

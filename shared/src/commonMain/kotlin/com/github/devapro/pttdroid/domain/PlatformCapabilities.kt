@@ -15,3 +15,17 @@ package com.github.devapro.pttdroid.domain
  * `SettingsRepository`'s schema identical on every platform.
  */
 expect val canHostRelay: Boolean
+
+/**
+ * Whether this platform has more than one place audio can come out of, and so whether offering
+ * the speaker/earpiece choice means anything here.
+ *
+ * A phone has a loudspeaker and a handset receiver, and which one is in use is the difference
+ * between a walkie-talkie on the table and a private call — see
+ * [com.github.devapro.pttdroid.data.settings.AudioOutput]. A desktop has one output device,
+ * chosen in the operating system, and `javax.sound.sampled` exposes no equivalent switch: the
+ * choice is hidden there rather than shown as a control that cannot do anything.
+ *
+ * The volume slider is not gated on this — every platform can attenuate what it plays.
+ */
+expect val canRouteAudioOutput: Boolean

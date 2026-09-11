@@ -1,6 +1,7 @@
 package com.github.devapro.pttdroid.model
 
 import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.AudioOutput
 
 /** UI intents. The domain state itself lives in `domain/PttState`. */
 sealed interface MainAction {
@@ -31,4 +32,20 @@ sealed interface MainAction {
 
     /** Clear the last transport/protocol error so a stale one stops looking like a live fault. */
     data object DismissError : MainAction
+
+    /** Loudspeaker or handset receiver. One deliberate tap, so it is applied and written at once. */
+    data class SetAudioOutput(val output: AudioOutput) : MainAction
+
+    /**
+     * The volume slider moving under a finger: applied to the speaker immediately so the change
+     * is audible while dragging, and deliberately **not** written down — see
+     * [SavePlaybackVolume].
+     */
+    data class SetPlaybackVolume(val volume: Float) : MainAction
+
+    /**
+     * The volume slider let go. One DataStore write for the whole drag, rather than one per
+     * value the slider passed through on the way.
+     */
+    data class SavePlaybackVolume(val volume: Float) : MainAction
 }

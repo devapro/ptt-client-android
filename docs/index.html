@@ -306,7 +306,7 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
         platforms, because there is only one of each to change.</p>
 
         <p>A single <code>:shared</code> module holds everything that is not tied to a device: the
-        socket, the talk-floor logic, the settings store, the ten reducers and the whole interface.
+        socket, the talk-floor logic, the settings store, the thirteen reducers and the whole interface.
         What is left outside it is small &mdash; the Android launcher is thirteen Kotlin files, and
         the desktop app is one <code>Window {}</code>.</p>
 
@@ -327,7 +327,7 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
               <span class="c">widget, overlay bubble</span>
 :desktopApp   <span class="c">one Window {}</span>
 iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
-        <p class="muted small">The same 136 unit tests run twice, compiled once for Android and
+        <p class="muted small">The same 150 unit tests run twice, compiled once for Android and
         once for desktop. iOS Kotlin is compiled on every push &mdash; which a Linux machine can
         do &mdash; then linked into a real framework and built through Xcode on a macOS runner,
         which is the only place that part can happen.</p>
@@ -360,6 +360,16 @@ iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
             <td><code>AVAudioEngine</code></td>
           </tr>
           <tr>
+            <th scope="row">Speaker or earpiece</th>
+            <td>Yes</td>
+            <td class="no">&mdash; one output, chosen in the OS</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <th scope="row">Playback volume</th>
+            <td>Yes</td><td>Yes</td><td>Yes</td>
+          </tr>
+          <tr>
             <th scope="row">Pinned <code>wss://</code></th>
             <td>Yes</td><td>Yes</td>
             <td>Yes, minus the certificate's validity window</td>
@@ -390,7 +400,8 @@ iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
     <p class="muted small" style="margin-top:26px">
       The dashes are platform limits rather than a backlog: neither desktop nor iOS gives a
       third-party app an always-on-top window over everything else, iOS cannot open the microphone
-      from a background notification handler, and the on-device relay is a JVM server. Row by row,
+      from a background notification handler, the on-device relay is a JVM server, and a desktop
+      has one output device, chosen in the operating system rather than in an app. Row by row,
       with the reasoning:
       <a href="https://github.com/devapro/ptt-client-android/blob/main/docs/platform-support.md">platform-support.md</a>.
     </p>
@@ -415,6 +426,13 @@ iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
 
         <p>And nothing depends on colour alone: every state also changes the word on the button
         and the glyph above it.</p>
+
+        <p>Above the channel stepper: <strong>loudspeaker or earpiece</strong>, and a volume
+        slider. A walkie-talkie is a loudspeaker, so that is the default. Both sit on the main
+        screen rather than behind the gear icon, because both are things you change while
+        somebody is still talking. The pill has no colour of its own — the live route is named
+        in words and the selected key is inverted — because on this screen colour belongs to the
+        state of the channel.</p>
       </div>
       <figure style="margin:0">
         <img class="device" src="img/screen-onair.png" width="360" height="800"
@@ -492,16 +510,16 @@ iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
 <section class="wrap panel">
   <p class="label">Get it</p>
   <div>
-    <h2>Add the<br>repository</h2>
-    <p class="muted" style="margin-top:22px; max-width:62ch">Every tagged release is signed and
-    published to this project's own F-Droid repository by CI. In the F-Droid app, go to
-    <em>Settings&nbsp;&rarr;&nbsp;Repositories&nbsp;&rarr;&nbsp;+</em> and add:</p>
-<pre>https://devapro.github.io/ptt-client-android/fdroid/repo</pre>
-    <p class="muted small">Check the fingerprint F-Droid shows against the one printed in the
-    <a href="https://github.com/devapro/ptt-client-android/actions/workflows/release.yml">release
-    workflow's log</a> — that is the only thing tying this repository to the project. Signed APKs
-    are also attached to each
-    <a href="https://github.com/devapro/ptt-client-android/releases">GitHub release</a>.</p>
+    <h2>Download<br>the APK</h2>
+    <p class="muted" style="margin-top:22px; max-width:62ch">Every tagged release carries a signed
+    APK, attached to its
+    <a href="https://github.com/devapro/ptt-client-android/releases">release page on GitHub</a>:</p>
+<pre>github.com/devapro/ptt-client-android/releases</pre>
+    <p class="muted small">A submission to the official F-Droid catalogue is in review; once it
+    lands, F-Droid will be the better route on a phone, because it updates by itself. This project
+    runs no F-Droid repository of its own &mdash; an app installed from f-droid.org and one
+    sideloaded from here are signed by different keys, and Android will not upgrade one into the
+    other.</p>
     <p class="muted small" style="margin-top:1.1em"><strong>Desktop.</strong> The same tag
     builds installers &mdash; <code>.deb</code>, <code>.msi</code>, <code>.exe</code> and
     <code>.dmg</code>, one per runner, since jpackage cannot cross-compile &mdash; attached to that

@@ -37,6 +37,12 @@
     </plurals>
     <string name="main_channel_number">Канал %1$d</string>
 
+    <!-- Audio output. The label doubles as the readout: colour is reserved for the channel
+         state, so which of the two routes is live has to be spelled out in words. -->
+    <string name="audio_out_speaker">Динамик</string>
+    <string name="audio_out_earpiece">Наушник</string>
+    <string name="audio_volume">Громкость</string>
+
     <!-- Content descriptions -->
     <string name="cd_settings">Открыть настройки</string>
     <string name="cd_back">Назад</string>
@@ -44,6 +50,9 @@
     <string name="cd_channel_down">Предыдущий канал</string>
     <string name="cd_channel_up">Следующий канал</string>
     <string name="cd_dismiss_error">Закрыть</string>
+    <string name="cd_audio_out_speaker">Воспроизводить через динамик</string>
+    <string name="cd_audio_out_earpiece">Воспроизводить через наушник</string>
+    <string name="cd_audio_volume">Громкость воспроизведения</string>
 
     <!-- Notification -->
     <string name="notification_channel_name">Сеанс PTT</string>
