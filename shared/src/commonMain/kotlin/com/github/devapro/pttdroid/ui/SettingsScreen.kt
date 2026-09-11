@@ -5,12 +5,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
@@ -161,7 +165,19 @@ fun SettingsScreen(
         bottomBar = {
             Surface(
                 color = MaterialTheme.colorScheme.background,
-                modifier = Modifier.imePadding(),
+                // Scaffold pads its *body* for window insets but never its bars — a bar is
+                // expected to consume its own — and this app draws edge-to-edge (targetSdk 36
+                // enforces it). Without this the Save button renders underneath the navigation
+                // bar, or a tablet's taskbar, where it cannot be read or tapped.
+                //
+                // Bottom-only `safeDrawing` rather than the `imePadding()` this used to have:
+                // safeDrawing already includes the IME, so the button still lifts above an open
+                // keyboard, and it adds the navigation bar, the gesture handle and a bottom
+                // display cutout, all of which `imePadding()` on its own ignored. On desktop
+                // these insets are zero, so nothing changes there.
+                modifier = Modifier.windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom),
+                ),
             ) {
                 Box(modifier = Modifier.fillMaxWidth()) {
                     Button(

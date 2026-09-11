@@ -1,0 +1,7 @@
+<resources>
+    <!-- Referenced from res/xml/ptt_widget_info.xml (android:description), which is Android XML
+         and cannot reach a CMP resource, so unlike every other user-facing string in this app it
+         is translated here rather than under shared/src/commonMain/composeResources/. Shown in
+         the launcher's widget picker. -->
+    <string name="widget_description">Состояние рации и переключатель передачи</string>
+</resources>

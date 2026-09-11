@@ -2,8 +2,11 @@
     <!-- Referenced from AndroidManifest.xml (android:label). CMP resources are not reachable
          from Android XML, so this has to stay an Android resource — it is also duplicated into
          shared/src/commonMain/composeResources/values/strings.xml so Kotlin call sites (the
-         MainScreen title bar) can read it the same way as every other string. -->
-    <string name="app_name">PTTdroid</string>
+         MainScreen title bar) can read it the same way as every other string.
+
+         translatable="false" because it is the product name, not a phrase: it stays "PTTdroid"
+         in every locale. The CMP copy is left out of values-ru/values-sr for the same reason. -->
+    <string name="app_name" translatable="false">PTTdroid</string>
 
     <!-- Referenced from res/xml/ptt_widget_info.xml (android:description), which is Android XML
          and cannot reach a CMP resource. Not used from Kotlin, so it lives only here. -->

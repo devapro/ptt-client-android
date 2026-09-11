@@ -269,6 +269,15 @@ without an Activity). Why this needs forcing into view at all, rather than just 
 public API for pointing resource lookup at an arbitrary locale — is written up as a gotcha in
 [`known-issues.md`](known-issues.md).
 
+Translations live in `shared/src/commonMain/composeResources/values-{ru,sr}/strings.xml`, beside
+the `values/` original. Two strings are the exception and are translated in
+`app/src/main/res/values-{ru,sr}/` instead: `app_name` and `widget_description` are referenced from
+Android XML (`AndroidManifest.xml`'s `android:label`, `res/xml/ptt_widget_info.xml`'s
+`android:description`), which cannot reach a CMP resource. `app_name` is
+`translatable="false"` — it is the product name, and marking it so is also what keeps lint's
+`MissingTranslation` from demanding a translation of it now that locale folders exist under
+`app/src/main/res/`.
+
 ## The relay address
 
 `AppSettings` keeps two pairs and they are not the same thing. `customHost`/`customPort` are what
