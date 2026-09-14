@@ -40,6 +40,12 @@ oldest frame beats accumulating a backlog of stale audio.
 The recorder only runs while we hold the talk floor — `startTransmit()` is called from
 `handleFloor` when the server confirms `isSelf`, never on the button press itself.
 
+If **Start-of-talk tone** is on (`AppSettings.startBeepEnabled`, default on), `startTransmit()`
+first plays and sends `StartBeep` — three 40 ms frames of a 1 kHz sine at the wire format —
+then waits the 120 ms out so the speaker finishes before `VoiceRecorder.start()`. The wait is
+why the microphone stays closed during the cue: otherwise the tone would leak into the capture.
+Off skips all of that and opens the microphone immediately, as before.
+
 ## Wire → playback
 
 ```

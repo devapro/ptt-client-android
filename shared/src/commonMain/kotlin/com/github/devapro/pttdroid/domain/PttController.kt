@@ -1,6 +1,7 @@
 package com.github.devapro.pttdroid.domain
 
 import com.github.devapro.pttdroid.PttLog
+import com.github.devapro.pttdroid.audio.StartBeep
 import com.github.devapro.pttdroid.audio.VoicePlayerContract
 import com.github.devapro.pttdroid.audio.VoiceRecorderContract
 import com.github.devapro.pttdroid.data.settings.AppSettings
@@ -363,12 +364,28 @@ class PttController(
 
     private fun startTransmit() {
         if (audioPumpJob?.isActive == true) return
-        recorder.start()
         audioPumpJob = scope.launch {
+            if (!sendStartBeepIfEnabled()) return@launch
+            recorder.start()
             for (chunk in recorder.frames) {
                 if (!connection.sendAudio(chunk)) break
             }
         }
+    }
+
+    /**
+     * Local play then the same PCM on the wire, then a wait so the speaker finishes before
+     * the microphone opens — otherwise the tone leaks into the capture. Off, or a dead
+     * socket, skips all of that and the caller must not start the recorder.
+     */
+    private suspend fun sendStartBeepIfEnabled(): Boolean {
+        if (!settingsProvider().startBeepEnabled) return true
+        for (frame in StartBeep.frames) {
+            player.play(frame)
+            if (!connection.sendAudio(frame.copyOf())) return false
+        }
+        delay(StartBeep.DURATION_MS.toLong())
+        return true
     }
 
     private fun stopTransmit() {

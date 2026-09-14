@@ -37,6 +37,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             themeMode = ThemeMode.fromStorage(prefs[KEY_THEME]),
             languageMode = LanguageMode.fromStorage(prefs[KEY_LANGUAGE]),
             hostServerEnabled = prefs[KEY_HOST_SERVER] ?: false,
+            startBeepEnabled = prefs[KEY_START_BEEP] ?: true,
             useTls = prefs[KEY_USE_TLS] ?: AppSettings.DEFAULT_TLS,
             certificateSha256 = prefs[KEY_CERT_SHA256].orEmpty(),
             accessToken = prefs[KEY_ACCESS_TOKEN].orEmpty(),
@@ -70,6 +71,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             .ifEmpty { AppSettings.DEFAULT_NAME }
         prefs[KEY_FLOATING] = settings.floatingButtonEnabled
         prefs[KEY_HOST_SERVER] = settings.hostServerEnabled
+        prefs[KEY_START_BEEP] = settings.startBeepEnabled
         prefs[KEY_THEME] = settings.themeMode.name
         prefs[KEY_LANGUAGE] = settings.languageMode.name
         prefs[KEY_USE_TLS] = settings.useTls
@@ -129,6 +131,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val KEY_LANGUAGE = stringPreferencesKey("language_mode")
         val KEY_HOST_SERVER = booleanPreferencesKey("host_server_enabled")
         val KEY_USE_TLS = booleanPreferencesKey("use_tls")
+        val KEY_START_BEEP = booleanPreferencesKey("start_beep_enabled")
         val KEY_CERT_SHA256 = stringPreferencesKey("certificate_sha256")
         val KEY_ACCESS_TOKEN = stringPreferencesKey("access_token")
         val KEY_AUDIO_OUTPUT = stringPreferencesKey("audio_output")

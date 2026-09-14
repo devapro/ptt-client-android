@@ -93,6 +93,10 @@
     <string name="settings_identity_caption">Shown to everyone on the channel while you hold the floor.</string>
     <string name="settings_display_name">Display name</string>
     <string name="settings_channel">Channel (1–99)</string>
+    <string name="settings_audio">Audio</string>
+    <string name="settings_audio_caption">Heard at the start of a transmission, by you and by everyone on the channel.</string>
+    <string name="settings_start_beep">Start-of-talk tone</string>
+    <string name="settings_start_beep_summary">Send a short beep when you begin transmitting</string>
     <string name="settings_appearance">Appearance</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>

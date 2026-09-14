@@ -244,4 +244,9 @@ class AppSettingsTest {
     fun `a fresh install defers to the system language`() {
         assertEquals(LanguageMode.SYSTEM, AppSettings().languageMode)
     }
+
+    @Test
+    fun `a fresh install sends a start-of-talk tone`() {
+        assertTrue(AppSettings().startBeepEnabled)
+    }
 }

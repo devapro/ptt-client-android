@@ -63,7 +63,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * Relay address, identity, channel and the two hands-free toggles.
+ * Relay address, identity, channel, the start-of-talk tone, and the two hands-free toggles.
  *
  * The server address being editable at all is the point — it used to be a LAN IP compiled into
  * the socket class. It is a choice rather than a permanent pair of fields, though: most people
@@ -100,6 +100,7 @@ fun SettingsScreen(
     var channel by remember(settings) { mutableStateOf(settings.channel.toString()) }
     var floating by remember(settings) { mutableStateOf(settings.floatingButtonEnabled) }
     var hostServer by remember(settings) { mutableStateOf(settings.hostServerEnabled) }
+    var startBeep by remember(settings) { mutableStateOf(settings.startBeepEnabled) }
     var theme by remember(settings) { mutableStateOf(settings.themeMode) }
     var language by remember(settings) { mutableStateOf(settings.languageMode) }
     var useTls by remember(settings) { mutableStateOf(settings.useTls) }
@@ -136,6 +137,7 @@ fun SettingsScreen(
         channel = channelValue ?: settings.channel,
         floatingButtonEnabled = floating,
         hostServerEnabled = hostServer,
+        startBeepEnabled = startBeep,
         themeMode = theme,
         languageMode = language,
         useTls = secure,
@@ -374,6 +376,18 @@ fun SettingsScreen(
                         imeAction = ImeAction.Done,
                     ),
                     modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            SectionCard(
+                title = stringResource(Res.string.settings_audio),
+                caption = stringResource(Res.string.settings_audio_caption),
+            ) {
+                ToggleRow(
+                    title = stringResource(Res.string.settings_start_beep),
+                    summary = stringResource(Res.string.settings_start_beep_summary),
+                    checked = startBeep,
+                    onCheckedChange = { startBeep = it },
                 )
             }
 

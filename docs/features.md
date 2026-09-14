@@ -55,6 +55,9 @@ a snackbar.
   pasted scheme safe: the inference is on screen before it can be saved.
 - **Identity** — display name, up to 32 characters, shown to peers as the floor holder.
 - **Channel** — 1..99.
+- **Audio** — **Start-of-talk tone**, on by default. Sends a short beep as the first frames of
+  each transmission (so everyone on the channel hears it) and plays the same tone locally so the
+  talker hears the floor grant. Turn it off if the cue is not wanted.
 - **Appearance** — System / Light / Dark. The app follows the system by default, but a radio gets
   pulled out at night on a phone whose owner has never touched the system theme, so it can be
   forced per-app.
@@ -97,6 +100,8 @@ When a handshake fails, the banner says why — "Certificate fingerprint does no
 The server allows one talker per channel. Pressing PTT requests the floor and transmission begins
 only once the server grants it, so two people pressing simultaneously cannot both be heard. While
 someone else holds it, every other client's PTT control is disabled and shows who is speaking.
+When the grant arrives and **Start-of-talk tone** is on, a 120 ms beep is played locally and sent
+as the first audio on the channel before the microphone opens.
 
 ## Talking without opening the app
 

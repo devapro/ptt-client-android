@@ -347,4 +347,16 @@ class SettingsScreenTest {
         rule.onNodeWithText(string(Res.string.settings_tls_host_conflict))
             .performScrollTo().assertIsDisplayed()
     }
+
+    @Test
+    fun the_start_beep_is_on_by_default_and_can_be_turned_off() {
+        show()
+
+        rule.onNodeWithText(string(Res.string.settings_start_beep))
+            .performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(string(Res.string.settings_start_beep)).performClick()
+        rule.onNodeWithText(string(Res.string.settings_save)).performClick()
+
+        rule.runOnIdle { assertEquals(false, saved.first().startBeepEnabled) }
+    }
 }

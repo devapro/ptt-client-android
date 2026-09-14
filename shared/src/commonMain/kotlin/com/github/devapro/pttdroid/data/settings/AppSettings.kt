@@ -25,6 +25,11 @@ data class AppSettings(
     val languageMode: LanguageMode = LanguageMode.SYSTEM,
     /** Run an on-device relay so no separate server is needed on a LAN. */
     val hostServerEnabled: Boolean = false,
+    /**
+     * Send a short tone as the first frames of each transmission, and play it locally so the
+     * talker hears the floor grant. Off does neither.
+     */
+    val startBeepEnabled: Boolean = true,
     /** `wss://` instead of `ws://`. */
     val useTls: Boolean = DEFAULT_TLS,
     /**

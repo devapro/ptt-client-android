@@ -89,6 +89,10 @@
     <string name="settings_identity_caption">Отображается всем на канале, пока вы удерживаете эфир.</string>
     <string name="settings_display_name">Отображаемое имя</string>
     <string name="settings_channel">Канал (1–99)</string>
+    <string name="settings_audio">Звук</string>
+    <string name="settings_audio_caption">Слышен в начале передачи вам и всем на канале.</string>
+    <string name="settings_start_beep">Сигнал начала передачи</string>
+    <string name="settings_start_beep_summary">Короткий звуковой сигнал, когда вы начинаете говорить</string>
     <string name="settings_appearance">Внешний вид</string>
     <string name="settings_theme_system">Системная</string>
     <string name="settings_theme_light">Светлая</string>

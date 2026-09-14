@@ -1,5 +1,6 @@
 package com.github.devapro.pttdroid.domain
 
+import com.github.devapro.pttdroid.audio.StartBeep
 import com.github.devapro.pttdroid.network.ConnectionEvent
 import com.github.devapro.pttdroid.network.PttConnection
 import com.github.devapro.pttdroid.network.protocol.ClientMessage
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -90,7 +92,8 @@ class PttControllerTest {
     private fun harness(
         scope: TestScope,
         settings: com.github.devapro.pttdroid.data.settings.AppSettings =
-            com.github.devapro.pttdroid.data.settings.AppSettings(),
+            // Floor tests measure the grant itself; the 120 ms cue is covered separately.
+            com.github.devapro.pttdroid.data.settings.AppSettings(startBeepEnabled = false),
     ): Triple<PttController, FakeConnection, Pair<FakeRecorder, FakePlayer>> {
         val connection = FakeConnection()
         val recorder = FakeRecorder()
@@ -731,6 +734,74 @@ class PttControllerTest {
 
         assertEquals(1, connection.connectCalls, "an error is still an answer")
         assertEquals(null, controller.state.value.lastError)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `a start beep is sent and played before the microphone opens`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val (controller, connection, fakes) = harness(
+            this,
+            com.github.devapro.pttdroid.data.settings.AppSettings(startBeepEnabled = true),
+        )
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        controller.requestTalk()
+        connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+
+        assertEquals(StartBeep.DURATION_FRAMES, connection.audioFrames.size)
+        assertEquals(StartBeep.DURATION_FRAMES, fakes.second.played.size)
+        assertEquals(0, fakes.first.started, "microphone stays closed while the tone plays")
+        assertTrue(controller.state.value.isTransmitting)
+
+        advanceTimeBy(StartBeep.DURATION_MS.toLong())
+        runCurrent()
+
+        assertEquals(1, fakes.first.started)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `a disabled start beep opens the microphone with no extra frames`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val (controller, connection, fakes) = harness(this)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        controller.requestTalk()
+        connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+
+        assertEquals(0, connection.audioFrames.size)
+        assertEquals(0, fakes.second.played.size)
+        assertEquals(1, fakes.first.started)
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `releasing during the start beep never opens the microphone`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val (controller, connection, fakes) = harness(
+            this,
+            com.github.devapro.pttdroid.data.settings.AppSettings(startBeepEnabled = true),
+        )
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        controller.requestTalk()
+        connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+        assertEquals(0, fakes.first.started)
+
+        controller.releaseTalk()
+        advanceTimeBy(StartBeep.DURATION_MS.toLong())
+        runCurrent()
+
+        assertEquals(0, fakes.first.started, "a cancelled tone must not open the mic afterwards")
+        assertTrue(connection.sent.contains(TalkRelease))
         controller.shutdown()
     }
 }

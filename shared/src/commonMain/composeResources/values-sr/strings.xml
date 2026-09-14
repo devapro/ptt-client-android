@@ -88,6 +88,10 @@
     <string name="settings_identity_caption">Приказује се свима на каналу док држите реч.</string>
     <string name="settings_display_name">Приказано име</string>
     <string name="settings_channel">Канал (1–99)</string>
+    <string name="settings_audio">Звук</string>
+    <string name="settings_audio_caption">Чује се на почетку преноса, вама и свима на каналу.</string>
+    <string name="settings_start_beep">Тон на почетку говора</string>
+    <string name="settings_start_beep_summary">Пошаљи кратак сигнал када почнеш да говориш</string>
     <string name="settings_appearance">Изглед</string>
     <string name="settings_theme_system">Системска</string>
     <string name="settings_theme_light">Светла</string>
