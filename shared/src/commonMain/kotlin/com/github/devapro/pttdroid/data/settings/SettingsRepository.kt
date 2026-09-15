@@ -31,6 +31,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             serverMode = ServerMode.restore(prefs[KEY_SERVER_MODE], storedHost, storedPort),
             customHost = storedHost ?: AppSettings.DEFAULT_HOST,
             customPort = storedPort ?: AppSettings.DEFAULT_PORT,
+            channel = AppSettings.clampChannel(
+                prefs[KEY_CHANNEL] ?: AppSettings.DEFAULT_CHANNEL,
+            ),
             displayName = prefs[KEY_NAME] ?: AppSettings.DEFAULT_NAME,
             broadcastStartBipEnabled = prefs[KEY_BROADCAST_START_BIP]
                 ?: AppSettings.DEFAULT_BROADCAST_START_BIP_ENABLED,

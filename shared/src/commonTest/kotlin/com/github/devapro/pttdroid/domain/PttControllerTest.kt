@@ -802,6 +802,38 @@ class PttControllerTest {
     }
 
     @Test
+    fun `changing the channel persists before restart dials the restored channel`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        var storedChannel = com.github.devapro.pttdroid.data.settings.AppSettings.DEFAULT_CHANNEL
+        val persisted = mutableListOf<Int>()
+        val connection = FakeConnection()
+        val controller = PttController(
+            connection = connection,
+            recorder = FakeRecorder(),
+            player = FakePlayer(),
+            settingsProvider = {
+                com.github.devapro.pttdroid.data.settings.AppSettings(channel = storedChannel)
+            },
+            channelPersister = { channel ->
+                persisted += channel
+                storedChannel = channel
+            },
+            scope = this,
+        )
+
+        controller.start()
+        controller.setChannel(7)
+
+        assertEquals(listOf(7), persisted)
+        assertEquals(2, connection.connectCalls, "the selected channel must restart the session")
+        assertTrue(connection.endpoints[0].url.contains("/channel/1?"))
+        assertTrue(connection.endpoints[1].url.contains("/channel/7?"))
+
+        controller.shutdown()
+    }
+
+    @Test
     fun `a successful connect clears the error from the previous failure`() = runTest(
         UnconfinedTestDispatcher(),
     ) {

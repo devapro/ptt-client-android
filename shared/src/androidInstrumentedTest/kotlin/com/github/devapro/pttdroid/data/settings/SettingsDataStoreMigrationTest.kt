@@ -3,6 +3,7 @@ package com.github.devapro.pttdroid.data.settings
 import androidx.datastore.dataStoreFile
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -48,6 +49,25 @@ class SettingsDataStoreMigrationTest {
         produceFile = { file },
     )
 
+    private fun restoredChannel(storedChannel: Int?): Int {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File(context.cacheDir, "channel-restore-${System.nanoTime()}.preferences_pb")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        return try {
+            val store = storeAt(file, scope)
+            runBlocking {
+                storedChannel?.let { channel ->
+                    store.edit { prefs -> prefs[intPreferencesKey("channel")] = channel }
+                }
+                SettingsRepository(store).settings.first().channel
+            }
+        } finally {
+            scope.cancel()
+            file.delete()
+        }
+    }
+
     @Test
     fun createAndroidSettingsDataStore_writesToTheLegacyDelegatesFile() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -72,6 +92,14 @@ class SettingsDataStoreMigrationTest {
         )
         val readBack = runBlocking { store.data.first()[probeKey] }
         assertEquals("phase3", readBack)
+    }
+
+    @Test
+    fun settings_restoresStoredChannel_andDefaultsOrClampsInvalidValues() {
+        assertEquals(AppSettings.DEFAULT_CHANNEL, restoredChannel(storedChannel = null))
+        assertEquals(7, restoredChannel(storedChannel = 7))
+        assertEquals(AppSettings.CHANNEL_RANGE.first, restoredChannel(storedChannel = 0))
+        assertEquals(AppSettings.CHANNEL_RANGE.last, restoredChannel(storedChannel = 100))
     }
 
     @Test
