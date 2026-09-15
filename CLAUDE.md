@@ -70,6 +70,14 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
 ## Hard rules
 
 - Never `git commit` or `git push` unless the user explicitly asks.
+- **If `implement-spec` is in play, do not write production code or tests.** Dispatch
+  `spec-coder`, then `spec-tester`. Only a tester PASS closes a unit. Task size is not an
+  exception — a one-file feature still goes through the pair.
+- **If `qa-device` is in play, do not call mobile MCP from the parent.** One `mobile-devices`
+  sub-agent per test case. "Use mobile mcp" names the tool, not the protocol, and does not
+  override this. A clean run has those agent names in the tool log; if the parent is editing
+  Kotlin or tapping the emulator, the rule has already failed.
+- Once either skill is opened, its hard rules win. Do not load it and then skip it.
 - **Do not remove `android.builtInKotlin=false` or `android.newDsl=false` from
   `gradle.properties`.** AGP 9 rejects the `org.jetbrains.kotlin.android` plugin without both.
 - **Do not raise `compileSdk` above 36, and do not bump AndroidX versions blindly**, in `:app` or
