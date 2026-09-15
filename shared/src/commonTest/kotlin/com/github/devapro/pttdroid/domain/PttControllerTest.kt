@@ -16,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -38,6 +39,7 @@ class PttControllerTest {
         val audioFrames = mutableListOf<ByteArray>()
         val inbound = MutableSharedFlow<ConnectionEvent>(extraBufferCapacity = 64)
         var connectCalls = 0
+        var acceptsAudio = true
         val endpoints = mutableListOf<com.github.devapro.pttdroid.network.PttEndpoint>()
 
         override val events: Flow<ConnectionEvent> = inbound
@@ -56,6 +58,7 @@ class PttControllerTest {
         }
 
         override suspend fun sendAudio(pcm: ByteArray): Boolean {
+            if (!acceptsAudio) return false
             audioFrames += pcm
             return true
         }
@@ -91,6 +94,9 @@ class PttControllerTest {
         scope: TestScope,
         settings: com.github.devapro.pttdroid.data.settings.AppSettings =
             com.github.devapro.pttdroid.data.settings.AppSettings(),
+        settingsProvider: suspend () -> com.github.devapro.pttdroid.data.settings.AppSettings = {
+            settings
+        },
     ): Triple<PttController, FakeConnection, Pair<FakeRecorder, FakePlayer>> {
         val connection = FakeConnection()
         val recorder = FakeRecorder()
@@ -99,7 +105,7 @@ class PttControllerTest {
             connection = connection,
             recorder = recorder,
             player = player,
-            settingsProvider = { settings },
+            settingsProvider = settingsProvider,
             channelPersister = {},
             scope = scope,
         )
@@ -294,6 +300,206 @@ class PttControllerTest {
 
         controller.shutdown()
     }
+
+    @Test
+    fun `an accepted local grant sends audible bip frames before microphone audio`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val (controller, connection, fakes) = harness(this)
+        val microphoneFrame = ByteArray(com.github.devapro.pttdroid.audio.AudioConfig.FRAME_BYTES) {
+            0x2a
+        }
+        fakes.first.frames.trySend(microphoneFrame)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        controller.requestTalk()
+
+        connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+
+        assertEquals(1, fakes.first.started)
+        assertEquals(3, connection.audioFrames.size)
+        val bipFrames = connection.audioFrames.take(2)
+        assertTrue(
+            bipFrames.all {
+                it.size == com.github.devapro.pttdroid.audio.AudioConfig.FRAME_BYTES &&
+                    it.size % com.github.devapro.pttdroid.audio.AudioConfig.BYTES_PER_SAMPLE == 0
+            },
+            "the injected signal must be complete PCM16LE frames",
+        )
+        assertTrue(bipFrames.any { frame -> frame.any { sampleByte -> sampleByte != 0.toByte() } })
+        assertTrue(connection.audioFrames[2].contentEquals(microphoneFrame))
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `disabled broadcast bip forwards microphone audio without an injected prefix`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val (controller, connection, fakes) = harness(
+            this,
+            com.github.devapro.pttdroid.data.settings.AppSettings(broadcastStartBipEnabled = false),
+        )
+        val microphoneFrame = ByteArray(com.github.devapro.pttdroid.audio.AudioConfig.FRAME_BYTES) {
+            0x2a
+        }
+        fakes.first.frames.trySend(microphoneFrame)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        controller.requestTalk()
+
+        connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+
+        assertEquals(1, fakes.first.started)
+        assertEquals(1, connection.audioFrames.size)
+        assertTrue(connection.audioFrames.single().contentEquals(microphoneFrame))
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `a repeated local grant injects the bip only once`() = runTest(UnconfinedTestDispatcher()) {
+        val (controller, connection, fakes) = harness(this)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        controller.requestTalk()
+
+        connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+        connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+
+        assertEquals(1, fakes.first.started)
+        assertEquals(2, connection.audioFrames.size)
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `a self grant after releasing a pending request does not inject a bip`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val (controller, connection, fakes) = harness(this)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        controller.requestTalk()
+        controller.releaseTalk()
+
+        connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+
+        assertTrue(connection.audioFrames.isEmpty())
+        assertEquals(0, fakes.first.started)
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `a cancelled pending audio job does not inject a bip or open the recorder`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val settingsForBip = CompletableDeferred<com.github.devapro.pttdroid.data.settings.AppSettings>()
+        var settingsReads = 0
+        val (controller, connection, fakes) = harness(
+            this,
+            settingsProvider = {
+                if (settingsReads++ == 0) {
+                    com.github.devapro.pttdroid.data.settings.AppSettings()
+                } else {
+                    settingsForBip.await()
+                }
+            },
+        )
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        controller.requestTalk()
+        connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+
+        controller.releaseTalk()
+        settingsForBip.complete(com.github.devapro.pttdroid.data.settings.AppSettings())
+
+        assertTrue(connection.audioFrames.isEmpty())
+        assertEquals(0, fakes.first.started)
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `a rejected audio send does not start microphone capture`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val (controller, connection, fakes) = harness(this)
+        connection.acceptsAudio = false
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        controller.requestTalk()
+
+        connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+
+        assertTrue(connection.audioFrames.isEmpty())
+        assertEquals(0, fakes.first.started)
+
+        controller.shutdown()
+    }
+
+
+    @Test
+    fun `unrelated control events do not inject a bip`() = runTest(UnconfinedTestDispatcher()) {
+        val (controller, connection, fakes) = harness(this)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+
+        connection.inbound.emit(ConnectionEvent.Control(Peers(3)))
+        connection.inbound.emit(ConnectionEvent.Control(Pong))
+
+        assertTrue(connection.audioFrames.isEmpty())
+        assertEquals(0, fakes.first.started)
+
+        controller.shutdown()
+    }
+
+
+    @Test
+    fun `a denied request does not inject a bip`() = runTest(UnconfinedTestDispatcher()) {
+        val (controller, connection, fakes) = harness(this)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        controller.requestTalk()
+
+        connection.inbound.emit(
+            ConnectionEvent.Control(ProtocolError(ErrorCodes.FLOOR_BUSY, "busy")),
+        )
+
+        assertTrue(connection.audioFrames.isEmpty())
+        assertEquals(0, fakes.first.started)
+
+        controller.shutdown()
+    }
+
+    @Test
+    fun `a self grant after disconnection does not inject a bip`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val (controller, connection, fakes) = harness(this)
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        controller.requestTalk()
+        connection.inbound.emit(ConnectionEvent.Disconnected("network lost"))
+
+        connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+
+        assertTrue(connection.audioFrames.isEmpty())
+        assertEquals(0, fakes.first.started)
+
+        controller.shutdown()
+    }
+
 
     @Test
     fun `floor_busy clears the pending request and does not transmit`() = runTest(

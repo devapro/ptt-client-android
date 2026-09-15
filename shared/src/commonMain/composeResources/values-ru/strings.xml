@@ -100,6 +100,10 @@
     <string name="settings_language_en">English</string>
     <string name="settings_language_ru">Русский</string>
     <string name="settings_language_sr">Српски</string>
+    <string name="settings_broadcast">Передача</string>
+    <string name="settings_broadcast_start_bip">Сигнал начала передачи</string>
+    <string name="settings_broadcast_start_bip_summary">Воспроизводить короткий сигнал для слушателей при начале передачи</string>
+
 
     <string name="settings_hands_free">Свободные руки</string>
     <string name="settings_floating">Плавающая кнопка PTT</string>

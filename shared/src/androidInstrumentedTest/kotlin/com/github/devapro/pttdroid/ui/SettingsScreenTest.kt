@@ -240,6 +240,30 @@ class SettingsScreenTest {
         rule.runOnIdle { assertEquals(LanguageMode.SERBIAN, saved.first().languageMode) }
     }
 
+    @Test
+    fun the_broadcast_start_bip_can_be_disabled_and_is_saved() {
+        show()
+
+        rule.onNodeWithText(string(Res.string.settings_broadcast_start_bip))
+            .performScrollTo()
+            .performClick()
+        rule.onNodeWithText(string(Res.string.settings_save)).performClick()
+
+        rule.runOnIdle { assertEquals(false, saved.first().broadcastStartBipEnabled) }
+    }
+
+    @Test
+    fun a_stored_disabled_broadcast_start_bip_can_be_enabled_and_is_saved() {
+        show(AppSettings(broadcastStartBipEnabled = false))
+
+        rule.onNodeWithText(string(Res.string.settings_broadcast_start_bip))
+            .performScrollTo()
+            .performClick()
+        rule.onNodeWithText(string(Res.string.settings_save)).performClick()
+
+        rule.runOnIdle { assertEquals(true, saved.first().broadcastStartBipEnabled) }
+    }
+
     // --- security ---------------------------------------------------------------------------
 
     private val fingerprint =
@@ -298,6 +322,7 @@ class SettingsScreenTest {
                 saved.first().certificateSha256,
             )
         }
+
     }
 
     @Test

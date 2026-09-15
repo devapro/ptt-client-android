@@ -100,6 +100,10 @@
     <string name="settings_language_ru">Русский</string>
     <string name="settings_language_sr">Српски</string>
 
+    <string name="settings_broadcast">Пренос</string>
+    <string name="settings_broadcast_start_bip">Звучни сигнал почетка преноса</string>
+    <string name="settings_broadcast_start_bip_summary">Пусти кратак звучни сигнал слушаоцима када почнете да говорите</string>
+
     <string name="settings_hands_free">Слободне руке</string>
     <string name="settings_floating">Плутајуће PTT дугме</string>
     <string name="settings_floating_summary">Прикажи дугме за говор које се може превлачити преко других апликација</string>

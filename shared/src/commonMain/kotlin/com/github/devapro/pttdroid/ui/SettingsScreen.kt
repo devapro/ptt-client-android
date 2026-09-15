@@ -63,8 +63,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * Relay address, identity, channel and the two hands-free toggles.
- *
+ * Relay address, identity, channel, broadcast-start bip and the two hands-free toggles.
  * The server address being editable at all is the point — it used to be a LAN IP compiled into
  * the socket class. It is a choice rather than a permanent pair of fields, though: most people
  * never have a reason to touch it, so Default folds it away and only Custom shows the box.
@@ -98,6 +97,9 @@ fun SettingsScreen(
     }
     var name by remember(settings) { mutableStateOf(settings.displayName) }
     var channel by remember(settings) { mutableStateOf(settings.channel.toString()) }
+    var broadcastStartBip by remember(settings) {
+        mutableStateOf(settings.broadcastStartBipEnabled)
+    }
     var floating by remember(settings) { mutableStateOf(settings.floatingButtonEnabled) }
     var hostServer by remember(settings) { mutableStateOf(settings.hostServerEnabled) }
     var theme by remember(settings) { mutableStateOf(settings.themeMode) }
@@ -134,6 +136,7 @@ fun SettingsScreen(
         customPort = typedAddress?.port ?: settings.customPort,
         displayName = name.trim().ifEmpty { AppSettings.DEFAULT_NAME },
         channel = channelValue ?: settings.channel,
+        broadcastStartBipEnabled = broadcastStartBip,
         floatingButtonEnabled = floating,
         hostServerEnabled = hostServer,
         themeMode = theme,
@@ -376,6 +379,15 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+            SectionCard(title = stringResource(Res.string.settings_broadcast)) {
+                ToggleRow(
+                    title = stringResource(Res.string.settings_broadcast_start_bip),
+                    summary = stringResource(Res.string.settings_broadcast_start_bip_summary),
+                    checked = broadcastStartBip,
+                    onCheckedChange = { broadcastStartBip = it },
+                )
+            }
+
 
             SectionCard(title = stringResource(Res.string.settings_appearance)) {
                 SegmentedChoice(

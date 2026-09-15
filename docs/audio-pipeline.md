@@ -34,6 +34,14 @@ Channel<ByteArray>(64, DROP_OLDEST)    ← VoiceRecorder.frames
 PttController.audioPumpJob  ──▶ connection.sendAudio(chunk)  ──▶ Frame.Binary
 ```
 
+On an accepted local floor grant, `PttController` first sends the enabled broadcast-start bip:
+two 40 ms, 1 kHz PCM16LE frames generated once in common `AudioConfig` code. Only after both
+binary frames complete does it start the recorder and forward `VoiceRecorder.frames`, so receivers
+hear the bip through the unchanged wire-to-playback path before microphone audio. Disabled bip
+preferences skip those generated frames and start capture directly. Repeated or late floor grants
+are ignored unless a local floor request is still pending, preventing a release or cancellation
+from reopening capture or injecting another bip.
+
 `DROP_OLDEST` is deliberate: capture is realtime, so if the network cannot keep up, discarding the
 oldest frame beats accumulating a backlog of stale audio.
 

@@ -20,6 +20,7 @@ data class AppSettings(
     val customPort: Int = DEFAULT_PORT,
     val channel: Int = DEFAULT_CHANNEL,
     val displayName: String = DEFAULT_NAME,
+    val broadcastStartBipEnabled: Boolean = DEFAULT_BROADCAST_START_BIP_ENABLED,
     val floatingButtonEnabled: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val languageMode: LanguageMode = LanguageMode.SYSTEM,
@@ -85,6 +86,7 @@ data class AppSettings(
         val DEFAULT_TLS: Boolean = RelayDefaults.TLS
         const val DEFAULT_CHANNEL: Int = 1
         const val DEFAULT_NAME: String = "Anon"
+        const val DEFAULT_BROADCAST_START_BIP_ENABLED: Boolean = true
 
         /** Full gain: the level everything played before there was a control at all. */
         const val DEFAULT_PLAYBACK_VOLUME: Float = 1f

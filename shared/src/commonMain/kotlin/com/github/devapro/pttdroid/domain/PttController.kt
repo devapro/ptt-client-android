@@ -1,6 +1,7 @@
 package com.github.devapro.pttdroid.domain
 
 import com.github.devapro.pttdroid.PttLog
+import com.github.devapro.pttdroid.audio.AudioConfig
 import com.github.devapro.pttdroid.audio.VoicePlayerContract
 import com.github.devapro.pttdroid.audio.VoiceRecorderContract
 import com.github.devapro.pttdroid.data.settings.AppSettings
@@ -337,9 +338,9 @@ class PttController(
         val heldByUs = floor.isSelf
         val heldBySomeone = floor.holderId != null
 
-        if (heldByUs) {
-            // The grant we were waiting for — only now does the microphone open.
-            startTransmit()
+        if (heldByUs && _state.value.isRequestingFloor) {
+            // Accept only the outstanding request. A repeated or late grant after release must
+            // not reopen the microphone or start another broadcast.
             _state.update {
                 it.copy(
                     isTransmitting = true,
@@ -348,7 +349,8 @@ class PttController(
                     floorHolderName = floor.holderName,
                 )
             }
-        } else {
+            startTransmit()
+        } else if (!heldByUs) {
             stopTransmit()
             _state.update {
                 it.copy(
@@ -363,10 +365,19 @@ class PttController(
 
     private fun startTransmit() {
         if (audioPumpJob?.isActive == true) return
-        recorder.start()
         audioPumpJob = scope.launch {
+            val broadcastStartBipEnabled = settingsProvider().broadcastStartBipEnabled
+            if (!isActive) return@launch
+
+            if (broadcastStartBipEnabled) {
+                for (bipFrame in AudioConfig.broadcastStartBipFrames()) {
+                    if (!isActive || !connection.sendAudio(bipFrame)) return@launch
+                }
+            }
+            if (!isActive) return@launch
+            recorder.start()
             for (chunk in recorder.frames) {
-                if (!connection.sendAudio(chunk)) break
+                if (!isActive || !connection.sendAudio(chunk)) break
             }
         }
     }

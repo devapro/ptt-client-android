@@ -1,5 +1,12 @@
 package com.github.devapro.pttdroid.network
 
+import com.github.devapro.pttdroid.audio.AudioConfig
+import com.github.devapro.pttdroid.audio.VoicePlayerContract
+import com.github.devapro.pttdroid.audio.VoiceRecorderContract
+import com.github.devapro.pttdroid.data.settings.AppSettings
+import com.github.devapro.pttdroid.data.settings.AudioOutput
+import com.github.devapro.pttdroid.data.settings.ServerMode
+import com.github.devapro.pttdroid.domain.PttController
 import com.github.devapro.pttdroid.internalserver.InternalPttServer
 import com.github.devapro.pttdroid.network.protocol.Ping
 import com.github.devapro.pttdroid.network.protocol.Pong
@@ -7,8 +14,10 @@ import com.github.devapro.pttdroid.network.protocol.ServerMessage
 import com.github.devapro.pttdroid.network.protocol.Welcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -49,6 +58,21 @@ class KtorPttConnectionTest {
 
     private fun endpoint() = PttEndpoint(url = "ws://127.0.0.1:$port/channel/1?name=Alice&v=1")
 
+    private class SilentRecorder : VoiceRecorderContract {
+        override val frames = Channel<ByteArray>()
+        override fun start() = Unit
+        override fun stop() = Unit
+        override fun release() = Unit
+    }
+
+    private class SilentPlayer : VoicePlayerContract {
+        override fun prepare() = Unit
+        override fun play(pcm: ByteArray) = Unit
+        override fun setOutput(output: AudioOutput) = Unit
+        override fun setVolume(volume: Float) = Unit
+        override fun release() = Unit
+    }
+
     @Test
     fun `the real transport carries a keepalive probe end to end`() = runBlocking {
         val connection = KtorPttConnection()
@@ -74,5 +98,66 @@ class KtorPttConnectionTest {
         session.cancel()
         collector.cancel()
         connection.shutdown()
+    }
+
+    @Test
+    fun `a receiver gets the controller bip bytes before microphone audio`() = runBlocking {
+        val senderConnection = KtorPttConnection()
+        val receiverConnection = KtorPttConnection()
+        val receivedAudio = Channel<ByteArray>(Channel.UNLIMITED)
+        val receiverControl = Channel<ServerMessage>(Channel.UNLIMITED)
+        val receiverCollector = launch(Dispatchers.Default) {
+            receiverConnection.events.collect { event ->
+                when (event) {
+                    is ConnectionEvent.Audio -> receivedAudio.send(event.pcm)
+                    is ConnectionEvent.Control -> receiverControl.send(event.message)
+                    else -> Unit
+                }
+            }
+        }
+        val receiverSession = launch(Dispatchers.Default) {
+            receiverConnection.connect(
+                PttEndpoint(url = "ws://127.0.0.1:$port/channel/1?name=Receiver&v=1"),
+            )
+        }
+        val sender = PttController(
+            connection = senderConnection,
+            recorder = SilentRecorder(),
+            player = SilentPlayer(),
+            settingsProvider = {
+                AppSettings(
+                    serverMode = ServerMode.CUSTOM,
+                    customHost = "127.0.0.1",
+                    customPort = port,
+                    useTls = false,
+                )
+            },
+            channelPersister = {},
+            scope = this,
+        )
+
+        try {
+            assertTrue(withTimeout(10_000) { receiverControl.receive() } is Welcome)
+
+            sender.start()
+            withTimeout(10_000) { sender.state.first { it.isConnected } }
+            sender.requestTalk()
+
+            val expected = AudioConfig.broadcastStartBipFrames()
+            val received = List(expected.size) {
+                withTimeout(10_000) { receivedAudio.receive() }
+            }
+            assertEquals(expected.size, received.size)
+            expected.zip(received).forEach { (emitted, heard) ->
+                assertTrue("Relay must preserve each bip frame byte-for-byte", emitted.contentEquals(heard))
+            }
+        } finally {
+            sender.shutdown()
+            senderConnection.shutdown()
+            receiverConnection.disconnect()
+            receiverSession.cancel()
+            receiverCollector.cancel()
+            receiverConnection.shutdown()
+        }
     }
 }

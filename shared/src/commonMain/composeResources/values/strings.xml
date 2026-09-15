@@ -107,6 +107,10 @@
     <string name="settings_language_ru">Русский</string>
     <string name="settings_language_sr">Српски</string>
 
+    <string name="settings_broadcast">Broadcast</string>
+    <string name="settings_broadcast_start_bip">Broadcast-start bip</string>
+    <string name="settings_broadcast_start_bip_summary">Play a short bip to listeners when you begin talking</string>
+
     <string name="settings_hands_free">Hands-free</string>
     <string name="settings_floating">Floating PTT button</string>
     <string name="settings_floating_summary">Show a draggable talk button over other apps</string>

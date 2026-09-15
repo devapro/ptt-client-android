@@ -2,11 +2,17 @@ package com.github.devapro.pttdroid.data.settings
 
 import androidx.datastore.dataStoreFile
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,6 +43,11 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SettingsDataStoreMigrationTest {
 
+    private fun storeAt(file: File, scope: CoroutineScope) = PreferenceDataStoreFactory.create(
+        scope = scope,
+        produceFile = { file },
+    )
+
     @Test
     fun createAndroidSettingsDataStore_writesToTheLegacyDelegatesFile() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -61,5 +72,35 @@ class SettingsDataStoreMigrationTest {
         )
         val readBack = runBlocking { store.data.first()[probeKey] }
         assertEquals("phase3", readBack)
+    }
+
+    @Test
+    fun broadcastStartBip_defaultsEnabledWhenAbsent_andRestoresSavedChoice() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File(context.cacheDir, "broadcast-start-bip-${System.nanoTime()}.preferences_pb")
+        val initialScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        try {
+            val repository = SettingsRepository(storeAt(file, initialScope))
+
+            runBlocking {
+                assertTrue(repository.settings.first().broadcastStartBipEnabled)
+                repository.save(AppSettings(broadcastStartBipEnabled = false))
+            }
+        } finally {
+            initialScope.cancel()
+        }
+
+        val restoredScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val repository = SettingsRepository(storeAt(file, restoredScope))
+
+            runBlocking {
+                assertEquals(false, repository.settings.first().broadcastStartBipEnabled)
+            }
+        } finally {
+            restoredScope.cancel()
+            file.delete()
+        }
     }
 }
