@@ -10,7 +10,7 @@ widget and a floating overlay on Android only. Talks to the WebSocket relay in t
 
 | Module | What it is | Namespace |
 |---|---|---|
-| `:shared` | Kotlin Multiplatform: `androidTarget` + `jvm("desktop")` + `iosArm64`/`iosSimulatorArm64` (the last two behind a build guard, see below). Everything platform-independent: `domain/`, `mvi/`, `model/`, `data/settings/`, `network/`, the Compose UI (`ui/`), the ten `reducer/`s, `MainActivityViewModel`, the platform-independent half of Koin (`di/SharedDi.kt`) | `com.github.devapro.pttdroid.shared` |
+| `:shared` | Kotlin Multiplatform: `androidTarget` + `jvm("desktop")` + `iosArm64`/`iosSimulatorArm64` (the last two behind a build guard, see below). Everything platform-independent: `domain/`, `mvi/`, `model/`, `data/settings/`, `network/`, the Compose UI (`ui/`), the fifteen `reducer/`s, `MainActivityViewModel`, the platform-independent half of Koin (`di/SharedDi.kt`) | `com.github.devapro.pttdroid.shared` |
 | `:app` | The Android application launcher: `MainActivity`, `service/`, `overlay/`, `widget/`, the Android-only half of Koin (`di/AppDi.kt`), and everything genuinely Android-only — 13 Kotlin files | `com.github.devapro.pttdroid` |
 | `:desktopApp` | Hosts the shared Compose UI in a `Window {}`, starts Koin itself (`Main.kt`) | — |
 | `iosApp/` | An Xcode project. `ComposeUIViewController` hosts `:shared`'s `App()`, called from `iosApp/iosApp/ContentView.swift` | — |
@@ -52,10 +52,10 @@ has and does not have: [`docs/platform-support.md`](docs/platform-support.md). D
 
 ```bash
 ./gradlew assembleDebug                        # debug APK (:app)
-./gradlew testDebugUnitTest                    # 164 unit tests (:shared, androidTarget compilation)
-./gradlew :shared:desktopTest                   # the same 164 tests again, desktop compilation
-./gradlew lintDebug                            # :app: 12 pre-existing findings; :shared: 0
-ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 49 instrumented (45 UI + 1 migration + 3 opt-in TLS, skipped without a relay)
+./gradlew testDebugUnitTest                    # 240 unit tests (:shared, androidTarget compilation)
+./gradlew :shared:desktopTest                   # the same 240 tests again, desktop compilation
+./gradlew lintDebug                            # :app: 21 pre-existing findings; :shared: 0
+ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 53 instrumented (47 UI + 3 migration + 3 opt-in TLS, skipped without a relay)
 ./gradlew build                                # full build, Android + desktop
 ./gradlew assembleRelease                      # unsigned unless PTT_KEYSTORE_PATH and friends are set
 ./gradlew :desktopApp:packageDeb               # a .deb (also packageMsi, packageDmg on their native OS)

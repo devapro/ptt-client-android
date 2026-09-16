@@ -1,6 +1,5 @@
 package com.github.devapro.pttdroid.model
 
-import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.AudioOutput
 
 /** UI intents. The domain state itself lives in `domain/PttState`. */
@@ -27,8 +26,20 @@ sealed interface MainAction {
 
     data object CloseSettings : MainAction
 
-    /** Persist the edited settings, close Settings and reconnect onto the new address. */
-    data class SaveSettings(val settings: AppSettings) : MainAction
+    /** One field of the open settings form changing. Applied to [ScreenState.settingsForm]. */
+    data class EditSettings(val edit: SettingsEdit) : MainAction
+
+    /**
+     * Persist the settings form, close Settings and reconnect onto the new address.
+     *
+     * Carries no payload: the form being saved is [ScreenState.settingsForm], the single copy the
+     * view and the reducer both read, rather than a value the view builds and hands over — see
+     * `SaveSettingsReducer`.
+     */
+    data object SaveSettings : MainAction
+
+    /** The floating button needs "draw over other apps"; only a Settings screen can grant it. */
+    data object RequestOverlayPermission : MainAction
 
     /** Clear the last transport/protocol error so a stale one stops looking like a live fault. */
     data object DismissError : MainAction

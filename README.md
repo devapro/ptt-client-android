@@ -111,7 +111,7 @@ Toolchain and the two build constraints that are easy to break:
 
 | Module | What it is |
 |---|---|
-| `:shared` | A Kotlin Multiplatform module — `androidTarget` + `jvm("desktop")` + `iosArm64`/`iosSimulatorArm64` (the last two behind a build guard). Everything platform-independent: `domain/`, `mvi/`, `model/`, `data/settings/`, `network/`, the ten reducers and the whole Compose UI |
+| `:shared` | A Kotlin Multiplatform module — `androidTarget` + `jvm("desktop")` + `iosArm64`/`iosSimulatorArm64` (the last two behind a build guard). Everything platform-independent: `domain/`, `mvi/`, `model/`, `data/settings/`, `network/`, the fifteen reducers and the whole Compose UI |
 | `:app` | The Android launcher — `MainActivity`, the foreground service, the Glance widget, the overlay bubble, and the Android-only half of DI. Thirteen Kotlin files |
 | `:desktopApp` | Hosts the shared UI in a `Window {}` and starts Koin itself |
 | `iosApp/` | An Xcode project; a `ComposeUIViewController` hosts `:shared`'s `App()` |

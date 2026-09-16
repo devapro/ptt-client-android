@@ -1,5 +1,9 @@
 package com.github.devapro.pttdroid.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -14,6 +18,8 @@ import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.LanguageMode
 import com.github.devapro.pttdroid.data.settings.ServerMode
 import com.github.devapro.pttdroid.data.settings.ThemeMode
+import com.github.devapro.pttdroid.model.MainAction
+import com.github.devapro.pttdroid.model.SettingsFormState
 import com.github.devapro.pttdroid.shared.resources.*
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
 import kotlinx.coroutines.runBlocking
@@ -36,15 +42,24 @@ class SettingsScreenTest {
 
     private val saved = mutableListOf<AppSettings>()
 
+    // Drives a miniature MVI loop so the screen stays a pure function of `form`: every emitted
+    // `EditSettings` is applied locally the same way `EditSettingsReducer` applies it to real
+    // state, and `SaveSettings` records what `form.toSettings()` produces — `saved` keeps its
+    // existing meaning, so every assertion below still reads unchanged.
     private fun show(settings: AppSettings = AppSettings()) {
         rule.setContent {
+            var form by remember { mutableStateOf(SettingsFormState.from(settings)) }
             PTTdroidTheme(darkTheme = true) {
                 SettingsScreen(
-                    settings = settings,
+                    form = form,
                     canDrawOverlay = true,
-                    onSave = { saved += it },
-                    onRequestOverlayPermission = {},
-                    onBack = {},
+                    onAction = { action ->
+                        when (action) {
+                            is MainAction.EditSettings -> form = form.apply(action.edit)
+                            MainAction.SaveSettings -> saved += form.toSettings()
+                            else -> Unit
+                        }
+                    },
                 )
             }
         }

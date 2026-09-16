@@ -48,6 +48,15 @@ class MainActivityViewModel(
         if (granted) onAction(MainAction.InitConnection)
     }
 
+    /**
+     * Mirrors "draw over other apps" into [ScreenState.canDrawOverlay], the way
+     * [onMicPermissionResult] mirrors the microphone grant. The platform layer polls this on
+     * every entry to Settings, since unlike the microphone there is no runtime callback for it.
+     */
+    fun onOverlayPermissionResult(granted: Boolean) {
+        _state.update { it.copy(canDrawOverlay = granted) }
+    }
+
     override fun onAction(action: MainAction) {
         viewModelScope.launch {
             val result = actionProcessor.process(action, _state.value)

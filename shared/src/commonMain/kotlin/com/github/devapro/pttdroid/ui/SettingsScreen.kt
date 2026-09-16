@@ -37,10 +37,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import org.jetbrains.compose.resources.painterResource
@@ -52,11 +48,13 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.github.devapro.pttdroid.data.settings.AppSettings
-import com.github.devapro.pttdroid.data.settings.CertificatePin
 import com.github.devapro.pttdroid.data.settings.LanguageMode
 import com.github.devapro.pttdroid.data.settings.ServerAddress
 import com.github.devapro.pttdroid.data.settings.ServerMode
 import com.github.devapro.pttdroid.data.settings.ThemeMode
+import com.github.devapro.pttdroid.model.MainAction
+import com.github.devapro.pttdroid.model.SettingsEdit
+import com.github.devapro.pttdroid.model.SettingsFormState
 import com.github.devapro.pttdroid.shared.resources.*
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
 import org.jetbrains.compose.resources.StringResource
@@ -75,15 +73,19 @@ import org.jetbrains.compose.resources.stringResource
  *
  * Save sits in a bottom bar rather than at the end of the scroll, so it is reachable with the
  * keyboard up and without hunting for it.
+ *
+ * The screen is a pure function of [form] — every field renders `form.x` and every edit is emitted
+ * as `onAction(MainAction.EditSettings(SettingsEdit.X(...)))` rather than held locally. Local state
+ * here (the previous `remember(settings)` holders) is what let an unrelated settings write while
+ * this screen was open silently wipe in-progress edits; [SettingsFormState] is the single source
+ * of truth now, seeded once when Settings is opened.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    settings: AppSettings,
+    form: SettingsFormState,
     canDrawOverlay: Boolean,
-    onSave: (AppSettings) -> Unit,
-    onRequestOverlayPermission: () -> Unit,
-    onBack: () -> Unit,
+    onAction: (MainAction) -> Unit,
     modifier: Modifier = Modifier,
     // Defaults to this platform's own capability so Android/desktop callers (and existing tests)
     // need no change; iOS's App() (ui/App.kt) also relies on this default. See
@@ -91,60 +93,7 @@ fun SettingsScreen(
     // iOS actual at all.
     canHostRelay: Boolean = com.github.devapro.pttdroid.domain.canHostRelay,
 ) {
-    var serverMode by remember(settings) { mutableStateOf(settings.serverMode) }
-    var address by remember(settings) {
-        mutableStateOf("${settings.customHost}:${settings.customPort}")
-    }
-    var name by remember(settings) { mutableStateOf(settings.displayName) }
-    var channel by remember(settings) { mutableStateOf(settings.channel.toString()) }
-    var broadcastStartBip by remember(settings) {
-        mutableStateOf(settings.broadcastStartBipEnabled)
-    }
-    var floating by remember(settings) { mutableStateOf(settings.floatingButtonEnabled) }
-    var hostServer by remember(settings) { mutableStateOf(settings.hostServerEnabled) }
-    var theme by remember(settings) { mutableStateOf(settings.themeMode) }
-    var language by remember(settings) { mutableStateOf(settings.languageMode) }
-    var useTls by remember(settings) { mutableStateOf(settings.useTls) }
-    var fingerprint by remember(settings) {
-        mutableStateOf(CertificatePin.format(settings.certificateSha256))
-    }
-    var token by remember(settings) { mutableStateOf(settings.accessToken) }
-    var tokenVisible by remember { mutableStateOf(false) }
-
-    val channelValue = channel.toIntOrNull()
-
-    // Parsed in both modes so that what is in the box survives a save made under Default, but only
-    // shown and enforced under Custom, where it is the thing being dialled.
-    val parsedAddress = ServerAddress.parse(address)
-    val typedAddress = parsedAddress as? ServerAddress.Valid
-    val customAddress = typedAddress.takeIf { serverMode.isCustom }
-    val addressProblem = (parsedAddress as? ServerAddress.Problem).takeIf { serverMode.isCustom }
-
-    // A scheme spelled out in the address decides encryption; with none, the switch below owns it.
-    val secure = customAddress?.secure ?: useTls
-
-    val channelError = channelValue == null || channelValue !in AppSettings.CHANNEL_RANGE
-    val nameError = name.length > AppSettings.MAX_NAME_LENGTH
-    val fingerprintError = secure && !CertificatePin.isAcceptable(fingerprint)
-    val tokenError = token.length > AppSettings.MAX_TOKEN_LENGTH
-    val hasError = addressProblem != null || channelError || nameError ||
-        fingerprintError || tokenError
-
-    val edited = settings.copy(
-        serverMode = serverMode,
-        customHost = typedAddress?.host ?: settings.customHost,
-        customPort = typedAddress?.port ?: settings.customPort,
-        displayName = name.trim().ifEmpty { AppSettings.DEFAULT_NAME },
-        channel = channelValue ?: settings.channel,
-        broadcastStartBipEnabled = broadcastStartBip,
-        floatingButtonEnabled = floating,
-        hostServerEnabled = hostServer,
-        themeMode = theme,
-        languageMode = language,
-        useTls = secure,
-        certificateSha256 = CertificatePin.normalize(fingerprint),
-        accessToken = token.trim(),
-    )
+    val endpointUrl = form.toSettings().displayUrl()
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -156,7 +105,7 @@ fun SettingsScreen(
                     containerColor = MaterialTheme.colorScheme.background,
                 ),
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { onAction(MainAction.CloseSettings) }) {
                         Icon(
                             painter = painterResource(Res.drawable.ic_arrow_back),
                             contentDescription = stringResource(Res.string.cd_back),
@@ -184,8 +133,8 @@ fun SettingsScreen(
             ) {
                 Box(modifier = Modifier.fillMaxWidth()) {
                     Button(
-                        onClick = { onSave(edited) },
-                        enabled = !hasError,
+                        onClick = { onAction(MainAction.SaveSettings) },
+                        enabled = !form.hasError,
                         modifier = Modifier
                             .widthIn(max = FORM_MAX_WIDTH)
                             .fillMaxWidth()
@@ -210,236 +159,357 @@ fun SettingsScreen(
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            SectionCard(
-                title = stringResource(Res.string.settings_server),
-                caption = stringResource(Res.string.settings_server_caption),
-            ) {
-                SegmentedChoice(
-                    options = SERVER_MODES,
-                    selected = serverMode,
-                    onSelect = { serverMode = it },
-                )
+            ServerSection(
+                serverMode = form.serverMode,
+                address = form.address,
+                addressProblem = form.addressProblem,
+                hasError = form.hasError,
+                endpointUrl = endpointUrl,
+                onAction = onAction,
+            )
 
-                if (serverMode.isCustom) {
-                    OutlinedTextField(
-                        value = address,
-                        onValueChange = { address = it },
-                        label = { Text(stringResource(Res.string.settings_server_url)) },
-                        isError = addressProblem != null,
-                        supportingText = {
-                            Text(stringResource(addressProblem.message()))
-                        },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Uri,
-                            imeAction = ImeAction.Next,
+            SecuritySection(
+                secure = form.secure,
+                fingerprint = form.fingerprint,
+                fingerprintError = form.fingerprintError,
+                relayConflict = form.relayConflict,
+                accessToken = form.accessToken,
+                accessTokenVisible = form.accessTokenVisible,
+                accessTokenError = form.accessTokenError,
+                onAction = onAction,
+            )
+
+            IdentitySection(
+                displayName = form.displayName,
+                displayNameError = form.displayNameError,
+                channel = form.channel,
+                channelError = form.channelError,
+                onAction = onAction,
+            )
+
+            BroadcastSection(
+                broadcastStartBipEnabled = form.broadcastStartBipEnabled,
+                onAction = onAction,
+            )
+
+            AppearanceSection(
+                themeMode = form.themeMode,
+                onAction = onAction,
+            )
+
+            LanguageSection(
+                languageMode = form.languageMode,
+                onAction = onAction,
+            )
+
+            HandsFreeSection(
+                floatingButtonEnabled = form.floatingButtonEnabled,
+                canDrawOverlay = canDrawOverlay,
+                hostServerEnabled = form.hostServerEnabled,
+                canHostRelay = canHostRelay,
+                onAction = onAction,
+            )
+        }
+        }
+    }
+}
+
+/** Relay address: Default/Custom choice, the address box under Custom, and the resolved URL. */
+@Composable
+private fun ServerSection(
+    serverMode: ServerMode,
+    address: String,
+    addressProblem: ServerAddress.Problem?,
+    hasError: Boolean,
+    endpointUrl: String,
+    onAction: (MainAction) -> Unit,
+) {
+    SectionCard(
+        title = stringResource(Res.string.settings_server),
+        caption = stringResource(Res.string.settings_server_caption),
+    ) {
+        SegmentedChoice(
+            options = SERVER_MODES,
+            selected = serverMode,
+            onSelect = { onAction(MainAction.EditSettings(SettingsEdit.Mode(it))) },
+        )
+
+        if (serverMode.isCustom) {
+            OutlinedTextField(
+                value = address,
+                onValueChange = { onAction(MainAction.EditSettings(SettingsEdit.Address(it))) },
+                label = { Text(stringResource(Res.string.settings_server_url)) },
+                isError = addressProblem != null,
+                supportingText = {
+                    Text(stringResource(addressProblem.message()))
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Next,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            Text(
+                text = stringResource(Res.string.settings_server_default_summary),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        if (!hasError) {
+            Text(
+                text = stringResource(Res.string.settings_endpoint, endpointUrl),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** TLS switch, the fingerprint box it gates, the relay/TLS conflict warning, and the access token. */
+@Composable
+private fun SecuritySection(
+    secure: Boolean,
+    fingerprint: String,
+    fingerprintError: Boolean,
+    relayConflict: Boolean,
+    accessToken: String,
+    accessTokenVisible: Boolean,
+    accessTokenError: Boolean,
+    onAction: (MainAction) -> Unit,
+) {
+    SectionCard(
+        title = stringResource(Res.string.settings_security),
+        caption = stringResource(Res.string.settings_security_caption),
+    ) {
+        ToggleRow(
+            title = stringResource(Res.string.settings_tls),
+            summary = stringResource(Res.string.settings_tls_summary),
+            checked = secure,
+            // The switch takes the scheme back from the address field: SettingsFormState.apply's
+            // SettingsEdit.Tls branch resolves the address to host:port first, which keeps the
+            // port the scheme implied — dropping a `https://` would otherwise silently take 443
+            // with it.
+            onCheckedChange = { onAction(MainAction.EditSettings(SettingsEdit.Tls(it))) },
+        )
+
+        if (secure) {
+            OutlinedTextField(
+                value = fingerprint,
+                onValueChange = { onAction(MainAction.EditSettings(SettingsEdit.Fingerprint(it))) },
+                label = { Text(stringResource(Res.string.settings_fingerprint)) },
+                isError = fingerprintError,
+                supportingText = {
+                    Text(
+                        stringResource(
+                            if (fingerprintError) {
+                                Res.string.error_fingerprint_invalid
+                            } else {
+                                Res.string.settings_fingerprint_summary
+                            },
                         ),
-                        modifier = Modifier.fillMaxWidth(),
                     )
-                } else {
-                    Text(
-                        text = stringResource(Res.string.settings_server_default_summary),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                },
+                singleLine = false,
+                maxLines = 3,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Ascii,
+                    imeAction = ImeAction.Next,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 
-                if (!hasError) {
-                    Text(
-                        text = stringResource(Res.string.settings_endpoint, edited.displayUrl()),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+        if (relayConflict) {
+            // The on-device relay speaks plaintext only, so this pair can never connect.
+            Text(
+                text = stringResource(Res.string.settings_tls_host_conflict),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
 
-            SectionCard(
-                title = stringResource(Res.string.settings_security),
-                caption = stringResource(Res.string.settings_security_caption),
-            ) {
-                ToggleRow(
-                    title = stringResource(Res.string.settings_tls),
-                    summary = stringResource(Res.string.settings_tls_summary),
-                    checked = secure,
-                    onCheckedChange = { wanted ->
-                        // The switch takes the scheme back from the address field. Resolving that
-                        // address to host:port first keeps the port the scheme implied — dropping
-                        // a `https://` would otherwise silently take 443 with it.
-                        customAddress?.takeIf { it.secure != null }
-                            ?.let { address = it.hostAndPort() }
-                        useTls = wanted
-                    },
-                )
-
-                if (secure) {
-                    OutlinedTextField(
-                        value = fingerprint,
-                        onValueChange = { fingerprint = it },
-                        label = { Text(stringResource(Res.string.settings_fingerprint)) },
-                        isError = fingerprintError,
-                        supportingText = {
-                            Text(
-                                stringResource(
-                                    if (fingerprintError) {
-                                        Res.string.error_fingerprint_invalid
-                                    } else {
-                                        Res.string.settings_fingerprint_summary
-                                    },
-                                ),
-                            )
+        OutlinedTextField(
+            value = accessToken,
+            onValueChange = { onAction(MainAction.EditSettings(SettingsEdit.AccessToken(it))) },
+            label = { Text(stringResource(Res.string.settings_token)) },
+            isError = accessTokenError,
+            supportingText = {
+                Text(
+                    stringResource(
+                        if (accessTokenError) {
+                            Res.string.error_token_too_long
+                        } else {
+                            Res.string.settings_token_summary
                         },
-                        singleLine = false,
-                        maxLines = 3,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Ascii,
-                            imeAction = ImeAction.Next,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-
-                if (secure && hostServer) {
-                    // The on-device relay speaks plaintext only, so this pair can never connect.
-                    Text(
-                        text = stringResource(Res.string.settings_tls_host_conflict),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-
-                OutlinedTextField(
-                    value = token,
-                    onValueChange = { token = it },
-                    label = { Text(stringResource(Res.string.settings_token)) },
-                    isError = tokenError,
-                    supportingText = {
-                        Text(
-                            stringResource(
-                                if (tokenError) {
-                                    Res.string.error_token_too_long
-                                } else {
-                                    Res.string.settings_token_summary
-                                },
-                            ),
+                    ),
+                )
+            },
+            singleLine = true,
+            visualTransformation = if (accessTokenVisible) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            trailingIcon = {
+                TextButton(
+                    onClick = {
+                        onAction(
+                            MainAction.EditSettings(SettingsEdit.AccessTokenVisible(!accessTokenVisible)),
                         )
                     },
-                    singleLine = true,
-                    visualTransformation = if (tokenVisible) {
-                        VisualTransformation.None
-                    } else {
-                        PasswordVisualTransformation()
-                    },
-                    trailingIcon = {
-                        TextButton(onClick = { tokenVisible = !tokenVisible }) {
-                            Text(
-                                stringResource(
-                                    if (tokenVisible) Res.string.settings_hide else Res.string.settings_show,
-                                ),
-                            )
-                        }
-                    },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Password,
-                        imeAction = ImeAction.Next,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-
-            SectionCard(
-                title = stringResource(Res.string.settings_identity),
-                caption = stringResource(Res.string.settings_identity_caption),
-            ) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(Res.string.settings_display_name)) },
-                    isError = nameError,
-                    supportingText = {
-                        if (nameError) Text(stringResource(Res.string.error_name_too_long))
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                OutlinedTextField(
-                    value = channel,
-                    onValueChange = { channel = it.filter(Char::isDigit).take(2) },
-                    label = { Text(stringResource(Res.string.settings_channel)) },
-                    isError = channelError,
-                    supportingText = {
-                        if (channelError) Text(stringResource(Res.string.error_channel_invalid))
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        imeAction = ImeAction.Done,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            SectionCard(title = stringResource(Res.string.settings_broadcast)) {
-                ToggleRow(
-                    title = stringResource(Res.string.settings_broadcast_start_bip),
-                    summary = stringResource(Res.string.settings_broadcast_start_bip_summary),
-                    checked = broadcastStartBip,
-                    onCheckedChange = { broadcastStartBip = it },
-                )
-            }
-
-
-            SectionCard(title = stringResource(Res.string.settings_appearance)) {
-                SegmentedChoice(
-                    options = THEME_MODES,
-                    selected = theme,
-                    onSelect = { theme = it },
-                )
-            }
-
-            SectionCard(title = stringResource(Res.string.settings_language)) {
-                SegmentedChoice(
-                    options = LANGUAGE_MODES,
-                    selected = language,
-                    onSelect = { language = it },
-                )
-            }
-
-            SectionCard(title = stringResource(Res.string.settings_hands_free)) {
-                ToggleRow(
-                    title = stringResource(Res.string.settings_floating),
-                    summary = stringResource(Res.string.settings_floating_summary),
-                    checked = floating,
-                    onCheckedChange = { floating = it },
-                )
-
-                // "Draw over other apps" is a special permission: it cannot be granted from a
-                // runtime dialog, only from a Settings screen we send the user to.
-                if (floating && !canDrawOverlay) {
+                ) {
                     Text(
-                        text = stringResource(Res.string.settings_overlay_required),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        stringResource(
+                            if (accessTokenVisible) Res.string.settings_hide else Res.string.settings_show,
+                        ),
                     )
-                    OutlinedButton(onClick = onRequestOverlayPermission) {
-                        Text(text = stringResource(Res.string.settings_grant_overlay))
-                    }
                 }
+            },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Next,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
 
-                // Omitted entirely (not just disabled) on a platform that cannot host the relay
-                // at all — InternalPttServer has no actual there. `hostServerEnabled` still
-                // round-trips through `edited` above so a stored value from another platform (or
-                // an earlier install) is never silently dropped by opening this screen.
-                if (canHostRelay) {
-                    ToggleRow(
-                        title = stringResource(Res.string.settings_host_server),
-                        summary = stringResource(Res.string.settings_host_server_summary),
-                        checked = hostServer,
-                        onCheckedChange = { hostServer = it },
-                    )
-                }
+/** Display name and channel number. */
+@Composable
+private fun IdentitySection(
+    displayName: String,
+    displayNameError: Boolean,
+    channel: String,
+    channelError: Boolean,
+    onAction: (MainAction) -> Unit,
+) {
+    SectionCard(
+        title = stringResource(Res.string.settings_identity),
+        caption = stringResource(Res.string.settings_identity_caption),
+    ) {
+        OutlinedTextField(
+            value = displayName,
+            onValueChange = { onAction(MainAction.EditSettings(SettingsEdit.DisplayName(it))) },
+            label = { Text(stringResource(Res.string.settings_display_name)) },
+            isError = displayNameError,
+            supportingText = {
+                if (displayNameError) Text(stringResource(Res.string.error_name_too_long))
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        OutlinedTextField(
+            value = channel,
+            onValueChange = { onAction(MainAction.EditSettings(SettingsEdit.Channel(it))) },
+            label = { Text(stringResource(Res.string.settings_channel)) },
+            isError = channelError,
+            supportingText = {
+                if (channelError) Text(stringResource(Res.string.error_channel_invalid))
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/** The start-of-transmission bip toggle. */
+@Composable
+private fun BroadcastSection(
+    broadcastStartBipEnabled: Boolean,
+    onAction: (MainAction) -> Unit,
+) {
+    SectionCard(title = stringResource(Res.string.settings_broadcast)) {
+        ToggleRow(
+            title = stringResource(Res.string.settings_broadcast_start_bip),
+            summary = stringResource(Res.string.settings_broadcast_start_bip_summary),
+            checked = broadcastStartBipEnabled,
+            onCheckedChange = {
+                onAction(MainAction.EditSettings(SettingsEdit.BroadcastStartBip(it)))
+            },
+        )
+    }
+}
+
+/** Theme choice. */
+@Composable
+private fun AppearanceSection(
+    themeMode: ThemeMode,
+    onAction: (MainAction) -> Unit,
+) {
+    SectionCard(title = stringResource(Res.string.settings_appearance)) {
+        SegmentedChoice(
+            options = THEME_MODES,
+            selected = themeMode,
+            onSelect = { onAction(MainAction.EditSettings(SettingsEdit.Theme(it))) },
+        )
+    }
+}
+
+/** Language choice. */
+@Composable
+private fun LanguageSection(
+    languageMode: LanguageMode,
+    onAction: (MainAction) -> Unit,
+) {
+    SectionCard(title = stringResource(Res.string.settings_language)) {
+        SegmentedChoice(
+            options = LANGUAGE_MODES,
+            selected = languageMode,
+            onSelect = { onAction(MainAction.EditSettings(SettingsEdit.Language(it))) },
+        )
+    }
+}
+
+/** Floating bubble (plus the overlay-permission escape hatch it needs) and the on-device relay. */
+@Composable
+private fun HandsFreeSection(
+    floatingButtonEnabled: Boolean,
+    canDrawOverlay: Boolean,
+    hostServerEnabled: Boolean,
+    canHostRelay: Boolean,
+    onAction: (MainAction) -> Unit,
+) {
+    SectionCard(title = stringResource(Res.string.settings_hands_free)) {
+        ToggleRow(
+            title = stringResource(Res.string.settings_floating),
+            summary = stringResource(Res.string.settings_floating_summary),
+            checked = floatingButtonEnabled,
+            onCheckedChange = { onAction(MainAction.EditSettings(SettingsEdit.FloatingButton(it))) },
+        )
+
+        // "Draw over other apps" is a special permission: it cannot be granted from a
+        // runtime dialog, only from a Settings screen we send the user to.
+        if (floatingButtonEnabled && !canDrawOverlay) {
+            Text(
+                text = stringResource(Res.string.settings_overlay_required),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            OutlinedButton(onClick = { onAction(MainAction.RequestOverlayPermission) }) {
+                Text(text = stringResource(Res.string.settings_grant_overlay))
             }
         }
+
+        // Omitted entirely (not just disabled) on a platform that cannot host the relay
+        // at all — InternalPttServer has no actual there. `hostServerEnabled` still
+        // round-trips through `toSettings()` above so a stored value from another platform (or
+        // an earlier install) is never silently dropped by opening this screen.
+        if (canHostRelay) {
+            ToggleRow(
+                title = stringResource(Res.string.settings_host_server),
+                summary = stringResource(Res.string.settings_host_server_summary),
+                checked = hostServerEnabled,
+                onCheckedChange = { onAction(MainAction.EditSettings(SettingsEdit.HostServer(it))) },
+            )
         }
     }
 }
@@ -569,11 +639,9 @@ private fun ToggleRow(
 private fun SettingsScreenPreview() {
     PTTdroidTheme {
         SettingsScreen(
-            settings = AppSettings(),
+            form = SettingsFormState.from(AppSettings()),
             canDrawOverlay = false,
-            onSave = {},
-            onRequestOverlayPermission = {},
-            onBack = {},
+            onAction = {},
         )
     }
 }

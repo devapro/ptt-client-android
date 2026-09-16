@@ -11,9 +11,11 @@ import com.github.devapro.pttdroid.network.PttConnection
 import com.github.devapro.pttdroid.reducer.CloseSettingsReducer
 import com.github.devapro.pttdroid.reducer.DisconnectReducer
 import com.github.devapro.pttdroid.reducer.DismissErrorReducer
+import com.github.devapro.pttdroid.reducer.EditSettingsReducer
 import com.github.devapro.pttdroid.reducer.InitConnectionReducer
 import com.github.devapro.pttdroid.reducer.OpenSettingsReducer
 import com.github.devapro.pttdroid.reducer.ReconnectReducer
+import com.github.devapro.pttdroid.reducer.RequestOverlayPermissionReducer
 import com.github.devapro.pttdroid.reducer.SavePlaybackVolumeReducer
 import com.github.devapro.pttdroid.reducer.SaveSettingsReducer
 import com.github.devapro.pttdroid.reducer.SetAudioOutputReducer
@@ -46,7 +48,7 @@ val SESSION_SCOPE = named("sessionScope")
 
 /**
  * Everything platform-independent: the session's own coroutine scope, the domain layer, the
- * network layer, all thirteen reducers, the action processor and the screen's `ViewModel`.
+ * network layer, all fifteen reducers, the action processor and the screen's `ViewModel`.
  *
  * Platform-specific pieces this graph still needs — the settings `DataStore`, the on-device relay
  * (`InternalPttServer`, JVM only) and the concrete `VoiceRecorderContract` /
@@ -104,7 +106,9 @@ private fun Module.reducerDi() {
     factoryOf(::SetChannelReducer)
     factoryOf(::OpenSettingsReducer)
     factoryOf(::CloseSettingsReducer)
+    factoryOf(::EditSettingsReducer)
     factoryOf(::SaveSettingsReducer)
+    factoryOf(::RequestOverlayPermissionReducer)
     factoryOf(::DismissErrorReducer)
     factoryOf(::SetAudioOutputReducer)
     factoryOf(::SetPlaybackVolumeReducer)
@@ -125,7 +129,9 @@ private fun Module.appDi() {
                 get<SetChannelReducer>(),
                 get<OpenSettingsReducer>(),
                 get<CloseSettingsReducer>(),
+                get<EditSettingsReducer>(),
                 get<SaveSettingsReducer>(),
+                get<RequestOverlayPermissionReducer>(),
                 get<DismissErrorReducer>(),
                 get<SetAudioOutputReducer>(),
                 get<SetPlaybackVolumeReducer>(),

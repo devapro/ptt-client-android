@@ -14,6 +14,9 @@ class CloseSettingsReducer :
     override suspend fun reduce(
         action: MainAction.CloseSettings,
         state: ScreenState,
-    ): Reducer.Result<ScreenState, MainAction, MainEvent?> =
-        Reducer.Result(state.copy(screen = ScreenState.Screen.Main))
+    ): Reducer.Result<ScreenState, MainAction, MainEvent?> = Reducer.Result(
+        // Discard the in-progress form along with the screen: reopening seeds a fresh one from
+        // disk, so nothing stale from this visit can leak into the next.
+        state.copy(screen = ScreenState.Screen.Main, settingsForm = null),
+    )
 }

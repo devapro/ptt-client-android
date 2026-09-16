@@ -11,7 +11,6 @@ import androidx.compose.runtime.remember
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.SettingsRepository
 import com.github.devapro.pttdroid.data.settings.applyLanguagePreference
-import com.github.devapro.pttdroid.model.MainAction
 import com.github.devapro.pttdroid.model.MainEvent
 import com.github.devapro.pttdroid.model.ScreenState
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
@@ -78,17 +77,19 @@ fun App() {
                     playbackVolume = settings.playbackVolume,
                 )
 
-                ScreenState.Screen.Settings -> SettingsScreen(
-                    settings = settings,
-                    // No "draw over other apps" concept on iOS, same as desktop's Main.kt.
-                    canDrawOverlay = true,
-                    onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
-                    onRequestOverlayPermission = {},
-                    onBack = { viewModel.onAction(MainAction.CloseSettings) },
-                    // canHostRelay defaults to this platform's own domain.canHostRelay (false on
-                    // iOS), so the row is already hidden without passing it explicitly — spelled
-                    // out anyway here since this is the one call site Phase 7a added on purpose.
-                )
+                ScreenState.Screen.Settings -> state.settingsForm?.let { form ->
+                    SettingsScreen(
+                        form = form,
+                        // No "draw over other apps" concept on iOS, same as desktop: nothing here
+                        // ever calls onOverlayPermissionResult, so ScreenState.canDrawOverlay just
+                        // keeps its own default of true and the warning never shows.
+                        canDrawOverlay = state.canDrawOverlay,
+                        onAction = viewModel::onAction,
+                        // canHostRelay defaults to this platform's own domain.canHostRelay (false on
+                        // iOS), so the row is already hidden without passing it explicitly — spelled
+                        // out anyway here since this is the one call site Phase 7a added on purpose.
+                    )
+                }
             }
         }
     }

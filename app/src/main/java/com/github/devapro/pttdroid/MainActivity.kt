@@ -114,7 +114,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by viewModel.state.collectAsStateWithLifecycle()
             val settings by settingsRepository.settings.collectAsState(initial = initialSettings)
-            var overlayGranted by remember { mutableStateOf(canDrawOverlays()) }
 
             // Seeded from initialSettings.languageMode — the same value collectAsState's initial
             // just rendered — so the first composition always agrees with itself. See
@@ -138,18 +137,18 @@ class MainActivity : ComponentActivity() {
                         playbackVolume = settings.playbackVolume,
                     )
 
-                    ScreenState.Screen.Settings -> SettingsScreen(
-                        settings = settings,
-                        canDrawOverlay = overlayGranted,
-                        onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
-                        onRequestOverlayPermission = { requestOverlayPermission() },
-                        onBack = { viewModel.onAction(MainAction.CloseSettings) },
-                    )
+                    ScreenState.Screen.Settings -> state.settingsForm?.let { form ->
+                        SettingsScreen(
+                            form = form,
+                            canDrawOverlay = state.canDrawOverlay,
+                            onAction = viewModel::onAction,
+                        )
+                    }
                 }
             }
 
             // Re-check the special permission whenever we come back from Settings.
-            LaunchedEffect(state.screen) { overlayGranted = canDrawOverlays() }
+            LaunchedEffect(state.screen) { viewModel.onOverlayPermissionResult(canDrawOverlays()) }
         }
 
         collectEvents()
@@ -199,6 +198,9 @@ class MainActivity : ComponentActivity() {
                 viewModel.event.collect { event ->
                     when (event) {
                         MainEvent.RequestMicPermission -> requestMicPermission()
+                        // Was dead until MainAction.RequestOverlayPermission existed for the
+                        // Settings screen to emit; RequestOverlayPermissionReducer turns that
+                        // action into this event, so this branch now actually fires.
                         MainEvent.RequestOverlayPermission -> requestOverlayPermission()
                         is MainEvent.ShowMessage ->
                             snackbarHostState.showSnackbar(getString(resource = event.messageRes))

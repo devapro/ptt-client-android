@@ -14,7 +14,6 @@ import com.github.devapro.pttdroid.data.settings.SettingsRepository
 import com.github.devapro.pttdroid.data.settings.applyLanguagePreference
 import com.github.devapro.pttdroid.di.sharedDesktopModule
 import com.github.devapro.pttdroid.di.sharedModule
-import com.github.devapro.pttdroid.model.MainAction
 import com.github.devapro.pttdroid.model.MainEvent
 import com.github.devapro.pttdroid.model.ScreenState
 import com.github.devapro.pttdroid.ui.MainScreen
@@ -93,15 +92,17 @@ fun main() {
                             playbackVolume = settings.playbackVolume,
                         )
 
-                        ScreenState.Screen.Settings -> SettingsScreen(
-                            settings = settings,
-                            // No overlay/"draw over other apps" concept on desktop; the floating-
-                            // bubble toggle in Settings just has nothing left to require.
-                            canDrawOverlay = true,
-                            onSave = { viewModel.onAction(MainAction.SaveSettings(it)) },
-                            onRequestOverlayPermission = {},
-                            onBack = { viewModel.onAction(MainAction.CloseSettings) },
-                        )
+                        ScreenState.Screen.Settings -> state.settingsForm?.let { form ->
+                            SettingsScreen(
+                                form = form,
+                                // No overlay/"draw over other apps" concept on desktop; nothing
+                                // here ever calls onOverlayPermissionResult, so
+                                // ScreenState.canDrawOverlay just keeps its own default of true and
+                                // the floating-bubble toggle's warning never shows.
+                                canDrawOverlay = state.canDrawOverlay,
+                                onAction = viewModel::onAction,
+                            )
+                        }
                     }
                 }
             }

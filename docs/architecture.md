@@ -6,7 +6,7 @@ by one application-scoped controller.
 **Compose Multiplatform, four modules, three shipped platforms.** `:shared` is a Kotlin
 Multiplatform module (`androidTarget` + `jvm("desktop")` + `iosArm64`/`iosSimulatorArm64`, the last
 two behind a build guard — see the iOS paragraph below) holding everything platform-independent:
-`domain/`, `mvi/`, `model/`, `data/settings/`, `network/`, the Compose UI (`ui/`), the ten
+`domain/`, `mvi/`, `model/`, `data/settings/`, `network/`, the Compose UI (`ui/`), the fifteen
 `reducer/`s, `MainActivityViewModel`, and the platform-independent half of the Koin graph
 (`di/SharedDi.kt`). A `PttLog` Kermit facade replaces Timber for all of this code, since Timber is
 Android-only. Below `commonMain`, three more source sets carry platform-specific code:
@@ -99,7 +99,7 @@ down a transmission in flight.
 | `data/settings/` | `AppSettings`, `ServerMode`, `ServerAddress`, `ThemeMode`, `LanguageMode`, `AudioOutput`, `CertificatePin`, `SettingsRepository` (takes a `DataStore<Preferences>` directly) — commonMain; `createAndroidSettingsDataStore(Context)`/`createDesktopSettingsDataStore()`/`createIosSettingsDataStore()` — plain platform functions, not `expect`/`actual`, called only from each platform's own DI module — see [Transport security](#transport-security) below for the trust-manager seam and the "Settings storage" note for the DataStore one | `:shared` |
 | `mvi/` | `ActionProcessor`, `Reducer`, `MviViewModel` | `:shared` commonMain |
 | `model/` | `MainAction`, `ScreenState`, `MainEvent` | `:shared` commonMain |
-| `reducer/` | one reducer per action (13) | `:shared` commonMain |
+| `reducer/` | one reducer per action (15) | `:shared` commonMain |
 | `ui/` | `PttUiStatus` (the shared state→presentation mapping), `MainScreen`, `SettingsScreen`, `App()` (iOS's UI root, `App.kt`), `components/`, `theme/`, `viewmodel/MainActivityViewModel` | `:shared` commonMain |
 | `di/` | `SharedDi.kt` (platform-independent graph) — `:shared` commonMain; `SharedDiAndroid.kt`/`SharedDiDesktop.kt`/`SharedDiIos.kt` (platform providers), `KoinIos.kt` (`initKoinIos()`, iOS's Koin entry point) — `:shared` androidMain/desktopMain/iosMain; `AppDi.kt` (Android-only: `VoiceRecorder`, `VoicePlayer`, `OverlayController`, `ServicePttSessionLauncher`) — `:app` | split across `:shared` and `:app` |
 | `MainViewController.kt` | `MainViewController()` — hosts `App()` via `ComposeUIViewController`, called from `iosApp/iosApp/ContentView.swift` | `:shared` iosMain |
@@ -139,12 +139,39 @@ Reducers no longer touch sockets or audio — they call `PttController` or `PttS
 | `Speak` | `StartSpeakReducer` | `requestTalk()` — asks the server for the floor |
 | `StopSpeak` | `StopSpeakReducer` | `releaseTalk()` |
 | `SetChannel(n)` | `SetChannelReducer` | Clamps to 1..99, persists, reconnects |
-| `OpenSettings` / `CloseSettings` | corresponding reducers | Switch the visible screen |
-| `SaveSettings(s)` | `SaveSettingsReducer` | One atomic DataStore write, closes Settings, chains to `Reconnect`, emits `ShowMessage` |
+| `OpenSettings` / `CloseSettings` | corresponding reducers | Switch the visible screen; the pair now also seeds and clears `ScreenState.settingsForm` |
+| `EditSettings(edit)` | `EditSettingsReducer` | Applies one field change to `ScreenState.settingsForm` |
+| `SaveSettings` | `SaveSettingsReducer` | One atomic DataStore write of `state.settingsForm`, closes Settings, chains to `Reconnect`, emits `ShowMessage` |
+| `RequestOverlayPermission` | `RequestOverlayPermissionReducer` | Forwards `MainEvent.RequestOverlayPermission` for the platform layer to act on |
 | `DismissError` | `DismissErrorReducer` | `PttController.clearError()` |
 | `SetAudioOutput(o)` | `SetAudioOutputReducer` | Speaker ↔ earpiece: applies to the player, then persists |
 | `SetPlaybackVolume(v)` | `SetPlaybackVolumeReducer` | The slider under a finger — reaches the speaker, writes nothing |
 | `SavePlaybackVolume(v)` | `SavePlaybackVolumeReducer` | The slider let go — one DataStore write for the whole drag |
+
+## Settings form state
+
+`ScreenState` carries two fields the rest of this doc's action table above already assumes:
+`canDrawOverlay` (default `true`, since desktop and iOS have no "draw over other apps" concept and
+never update it; Android sets it via `MainActivityViewModel.onOverlayPermissionResult`, mirroring
+the existing `micPermissionGranted`) and `settingsForm: SettingsFormState?`, non-null exactly while
+`screen == Screen.Settings`.
+
+`SettingsFormState` (`model/SettingsFormState.kt`) is the settings form's single source of truth —
+validation rules, the address/TLS interplay, and the final `AppSettings` merge all live there now,
+not in `SettingsScreen`. Before this, the form was thirteen local `remember { mutableStateOf }`
+holders inside the composable, keyed `remember(settings)` on the repository flow. That key re-ran
+on *every* emission from `SettingsRepository`, not just the first one seen after opening Settings —
+so a completely unrelated write while Settings was open (a playback-volume save or an audio-output
+change made from the main screen) silently wiped whatever the user had typed. `OpenSettingsReducer`
+now seeds `settingsForm` once, from a single `SettingsRepository.settings.first()` read, and nothing
+downstream re-keys it; `EditSettingsReducer` is the only thing that ever changes it afterward, one
+`SettingsEdit` at a time.
+
+The second win is independent of the defect: pulling validation and the `AppSettings` merge out of
+the composable and into a pure, constructor-only type made them reachable from `commonTest` for the
+first time. `SettingsFormStateTest` covers 55 cases — every `*Error` boundary, the address/TLS
+scheme interplay, the channel digit filter — that previously needed an emulator and a rendered
+`SettingsScreen` to exercise at all.
 
 ## Talk-floor flow
 
@@ -209,7 +236,7 @@ definitions depend on):
   the named `sessionScope` (`SupervisorJob + Dispatchers.IO`, exposed as the public qualifier
   `SESSION_SCOPE` rather than a private string, since three different modules now need to `get()`
   against the exact same scope instance), `SettingsRepository`, `KtorPttConnection` (bound to
-  `PttConnection`), `PttController`, all thirteen reducers, `MainActionProcessor`, and
+  `PttConnection`), `PttController`, all fifteen reducers, `MainActionProcessor`, and
   `MainActivityViewModel` (`viewModelOf`).
 - **`:shared` androidMain / desktopMain (`SharedDiAndroid.kt` / `SharedDiDesktop.kt`)** — each
   platform's `DataStore<Preferences>` (via `createAndroidSettingsDataStore(androidContext())` /
