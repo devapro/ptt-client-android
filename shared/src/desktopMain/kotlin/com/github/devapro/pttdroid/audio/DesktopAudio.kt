@@ -174,13 +174,13 @@ class DesktopVoicePlayer(private val scope: CoroutineScope) : VoicePlayerContrac
     }
 
     /** Idempotent; safe to call more than once. */
-    override fun prepare() {
-        if (line != null) return
+    override fun prepare(): Boolean {
+        if (line != null) return true
 
         val info = DataLine.Info(SourceDataLine::class.java, PCM_FORMAT)
         if (!AudioSystem.isLineSupported(info)) {
             logFailureOnce { "No playback device supports 16 kHz mono PCM16; audio will not play" }
-            return
+            return false
         }
 
         val bufferBytes = AudioConfig.FRAME_BYTES * 4
@@ -191,10 +191,10 @@ class DesktopVoicePlayer(private val scope: CoroutineScope) : VoicePlayerContrac
             }
         } catch (e: LineUnavailableException) {
             logFailureOnce(e) { "Could not open playback line; audio will not play" }
-            return
+            return false
         } catch (e: IllegalArgumentException) {
             logFailureOnce(e) { "Playback line rejected the requested format/buffer; audio will not play" }
-            return
+            return false
         }
 
         line = opened
@@ -204,6 +204,7 @@ class DesktopVoicePlayer(private val scope: CoroutineScope) : VoicePlayerContrac
                 runCatching { opened.write(scaled, 0, scaled.size) }
             }
         }
+        return true
     }
 
     /** No second output device on a desktop to move to. See the class KDoc. */
@@ -220,8 +221,16 @@ class DesktopVoicePlayer(private val scope: CoroutineScope) : VoicePlayerContrac
         pending.trySend(pcm)
     }
 
-    /** Idempotent; safe to call more than once and from either side of a reconnect. */
+    /**
+     * Idempotent; safe to call more than once and from either side of a reconnect.
+     *
+     * Also resets [loggedFailure]: this player is a process-lifetime Koin singleton, so without
+     * the reset a second connection attempt whose line fails for a completely different reason
+     * (a device unplugged between calls, say) would be swallowed by the first failure's
+     * once-only guard and never reach the log at all.
+     */
     override fun release() {
+        loggedFailure = false
         val current = line ?: return
         line = null
         drainJob?.cancel()

@@ -119,7 +119,7 @@ Both classes are owned by `PttController`, and both `release()` methods are idem
 
 | | `VoiceRecorder` | `VoicePlayer` |
 |---|---|---|
-| Create | lazily in `ensureRecord()`, reused | `prepare()`, no-op if already built |
+| Create | lazily in `ensureRecord()`, reused | `prepare()` — returns `Boolean` (no-op, returns `true`, if already built) |
 | Start | `start()` — `startRecording()` + one read coroutine | implicit, `AudioTrack.play()` in `prepare()` |
 | Stop | `stop()` — cancels the read job, `AudioRecord.stop()` | — |
 | Release | `release()` — stops, releases, **nulls the field** | `release()` — stops, releases, **nulls the field**, restores `MODE_NORMAL` if it took it |
@@ -174,9 +174,14 @@ a change in intent:
 
 No capture/playback device, or one that refuses to open (`AudioSystem.isLineSupported` false, or a
 `LineUnavailableException`/`IllegalArgumentException` from `open()`), is not fatal: the failure is
-logged once at acquisition (never per frame) and the affected side just stays inert — no capture
-means `frames` never emits, no playback means `play()` is a no-op — so the app still runs as a
-listen-only (or transmit-only) client instead of crashing.
+logged once at acquisition (never per frame, and reset in `release()` so a *second* failed
+`prepare()` on the same process-lifetime instance is logged again rather than swallowed by the
+first) and the affected side just stays inert — no capture means `frames` never emits, no playback
+means `play()` is a no-op — so the app still runs as a listen-only (or transmit-only) client
+instead of crashing. Unlike the log line, `DesktopVoicePlayer.prepare()`'s `Boolean` return also
+reaches `PttController`, which surfaces it on the same state the UI already reads (see
+[Testing note](#testing-note) and `known-issues.md` #38) — this used to be silent even to the app
+itself, not just to the log.
 
 ## iOS capture / playback
 
@@ -262,7 +267,10 @@ and a real device run. See the Phase 7b report for the full, prioritised list.
 
 `audio/AudioContracts.kt` defines `VoiceRecorderContract` and `VoicePlayerContract` so the domain
 layer can be unit-tested on the JVM — `AudioRecord` and `AudioTrack` are unavailable outside an
-instrumented test. `PttControllerTest` drives fakes for both. `audio/FrameAccumulator.kt` is the
+instrumented test. `PttControllerTest` drives fakes for both; its `FakePlayer.prepareSucceeds`
+flag exercises the `Boolean` `prepare()` failure path — asserting that `PttState.lastError` picks
+up `PttController.PLAYBACK_UNAVAILABLE` — the same way `FakeConnection.failNextAudioSends` exercises
+a bip frame failing without stranding the transmission (`known-issues.md` #38/#39). `audio/FrameAccumulator.kt` is the
 one piece of the desktop implementation that is hardware-independent and gets its own unit test
 (`FrameAccumulatorTest`, `commonTest`); the rest of `DesktopVoiceRecorder`/`DesktopVoicePlayer` can
 only be smoke-tested against real hardware.

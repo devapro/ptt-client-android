@@ -366,8 +366,8 @@ internal class IosVoicePlayer : VoicePlayerContract {
     private val queue: Channel<FloatArray> = Channel(capacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     /** Idempotent; safe to call more than once. */
-    override fun prepare() {
-        if (node != null) return
+    override fun prepare(): Boolean {
+        if (node != null) return true
 
         IosAudioSession.activate()
 
@@ -421,7 +421,7 @@ internal class IosVoicePlayer : VoicePlayerContract {
             engine.prepare()
         }.onFailure {
             PttLog.e(it) { "Could not configure the iOS playback engine; audio will not play" }
-            return
+            return false
         }
 
         val started = memScoped {
@@ -434,10 +434,11 @@ internal class IosVoicePlayer : VoicePlayerContract {
         }
         if (!started) {
             runCatching { engine.detachNode(sourceNode) }
-            return
+            return false
         }
 
         node = sourceNode
+        return true
     }
 
     /**

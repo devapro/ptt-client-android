@@ -17,7 +17,19 @@ interface VoiceRecorderContract {
 }
 
 interface VoicePlayerContract {
-    fun prepare()
+    /**
+     * Builds and starts the underlying playback device.
+     *
+     * Returns `true` once audio written to [play] will actually be heard, `false` if setup
+     * failed — a device that refuses the sample rate, an exception building the native track/line,
+     * or one that built but never reached a running state. This used to return `Unit`, so a failed
+     * setup was invisible: the caller could not tell "ready" from "silently broken", the user heard
+     * nothing and saw a normal-looking UI, and nothing distinguished the two short of attaching a
+     * debugger. `domain.PttController` folds a `false` here into `PttState.lastError` so the
+     * failure reaches the user instead of only a log line nobody in production ever reads. Idempotent:
+     * calling it again while already prepared returns `true` without rebuilding anything.
+     */
+    fun prepare(): Boolean
     fun play(pcm: ByteArray)
 
     /**

@@ -66,7 +66,7 @@ class KtorPttConnectionTest {
     }
 
     private class SilentPlayer : VoicePlayerContract {
-        override fun prepare() = Unit
+        override fun prepare() = true
         override fun play(pcm: ByteArray) = Unit
         override fun setOutput(output: AudioOutput) = Unit
         override fun setVolume(volume: Float) = Unit

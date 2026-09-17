@@ -64,8 +64,8 @@ class VoicePlayer(context: Context) : VoicePlayerContract {
     /** True only while we hold `MODE_IN_COMMUNICATION`, so [release] restores nothing it did not take. */
     private var communicationRouteHeld = false
 
-    override fun prepare() {
-        audioTrack?.let { return }
+    override fun prepare(): Boolean {
+        audioTrack?.let { return true }
 
         val minBuffer = AudioTrack.getMinBufferSize(
             AudioConfig.SAMPLE_RATE_HZ,
@@ -74,7 +74,7 @@ class VoicePlayer(context: Context) : VoicePlayerContract {
         )
         if (minBuffer == AudioTrack.ERROR || minBuffer == AudioTrack.ERROR_BAD_VALUE) {
             Timber.e("Speaker does not support %d Hz mono PCM16", AudioConfig.SAMPLE_RATE_HZ)
-            return
+            return false
         }
 
         applyRoute()
@@ -100,13 +100,13 @@ class VoicePlayer(context: Context) : VoicePlayerContract {
                 .build()
         } catch (e: Exception) {
             Timber.e(e, "Could not create AudioTrack")
-            return
+            return false
         }
 
         if (track.state != AudioTrack.STATE_INITIALIZED) {
             Timber.e("AudioTrack failed to initialise (state=%d)", track.state)
             track.release()
-            return
+            return false
         }
 
         runCatching { track.setVolume(volume) }
@@ -116,7 +116,7 @@ class VoicePlayer(context: Context) : VoicePlayerContract {
             .onFailure {
                 Timber.e(it, "AudioTrack.play failed")
                 track.release()
-                return
+                return false
             }
 
         Timber.i(
@@ -126,6 +126,7 @@ class VoicePlayer(context: Context) : VoicePlayerContract {
             output,
         )
         audioTrack = track
+        return true
     }
 
     /**

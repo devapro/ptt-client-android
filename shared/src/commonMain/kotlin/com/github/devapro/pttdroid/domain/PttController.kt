@@ -297,12 +297,16 @@ class PttController(
         when (message) {
             is Welcome -> {
                 clientId = message.clientId
-                player.prepare()
+                val playbackReady = player.prepare()
+                if (!playbackReady) {
+                    PttLog.e { "Playback device setup failed on welcome; audio will not be heard" }
+                }
                 _state.update {
                     it.copy(
                         status = ConnectionStatus.Connected,
                         channel = message.channel,
                         peers = message.peers,
+                        lastError = if (playbackReady) it.lastError else PLAYBACK_UNAVAILABLE,
                     )
                 }
                 PttLog.i { "Joined channel ${message.channel} as ${message.clientId} (${message.peers} peers)" }
@@ -369,9 +373,18 @@ class PttController(
             val broadcastStartBipEnabled = settingsProvider().broadcastStartBipEnabled
             if (!isActive) return@launch
 
+            // The bip is a courtesy tone, not part of the floor grant: the server has already
+            // handed us the floor by the time this runs, so a failed bip frame must not return
+            // before recorder.start() below — doing that used to strand the transmission with the
+            // floor granted and the microphone never opened, leaving every listener hearing
+            // silence with no error anywhere. A dropped frame or two of tone is a much smaller
+            // problem than a talker who cannot be heard at all, so a failure here only stops
+            // sending the tone; it never cancels the real audio loop. Cancellation is different —
+            // that still exits immediately, same as everywhere else in this method.
             if (broadcastStartBipEnabled) {
                 for (bipFrame in AudioConfig.broadcastStartBipFrames()) {
-                    if (!isActive || !connection.sendAudio(bipFrame)) return@launch
+                    if (!isActive) return@launch
+                    if (!connection.sendAudio(bipFrame)) break
                 }
             }
             if (!isActive) return@launch
@@ -396,6 +409,16 @@ class PttController(
          * than the situation.
          */
         const val RELAY_SILENT = "The relay stopped responding"
+
+        /**
+         * Shown when `player.prepare()` fails on `welcome`. Plain, user-actionable words on
+         * purpose: this used to be entirely invisible — the socket connected, the UI showed a
+         * normal "connected" state, and the user just heard nothing, with no distinction anywhere
+         * between "the channel is quiet" and "playback is broken on this device". A banner is the
+         * only signal that tells them the difference and that it is worth trying another device or
+         * restarting rather than waiting for someone to talk.
+         */
+        const val PLAYBACK_UNAVAILABLE = "Audio playback is unavailable on this device"
     }
 
     /** Releases every native resource. Call from the owning service's `onDestroy`. */

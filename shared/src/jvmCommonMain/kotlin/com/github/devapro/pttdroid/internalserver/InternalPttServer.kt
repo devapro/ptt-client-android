@@ -255,6 +255,26 @@ class InternalPttServer {
         )
     }
 
+    /**
+     * Relays an audio frame to every other session on the channel.
+     *
+     * Each peer gets its OWN [Frame.Binary] instance. Ktor's JVM [Frame] wraps its payload in a
+     * `buffer: ByteBuffer` field created once per instance (`ByteBuffer.wrap(data)`), and that
+     * field carries mutable read state (position/limit). Handing the SAME `Frame.Binary` to
+     * every peer's outbound queue means every peer's writer coroutine — each running
+     * concurrently, one per session — reads that one shared `ByteBuffer` while serializing to
+     * its own socket, corrupting or truncating whichever write loses the race. This only shows
+     * up at 3+ participants (2+ other peers racing), which is why a 2-user channel always
+     * looked fine. Mirrors the identical fix in `ptt-server`'s `PttChannel.relayAudio`.
+     *
+     * No array copy is needed: [frame]'s `data` is a fresh `ByteArray` produced once per
+     * inbound frame by Ktor's `WebSocketReader`/`SimpleFrameCollector` (never pooled or reused
+     * across frames), and constructing a new `Frame.Binary` per peer gives each one its own
+     * `ByteBuffer.wrap(data)` with an independent position/limit — reading through a
+     * `ByteBuffer` never mutates the backing array. Sharing the payload array across the N new
+     * instances is therefore safe and keeps this per-audio-frame path allocation-light (one
+     * `Frame.Binary` per peer, no `ByteArray` copies).
+     */
     private suspend fun relay(channelId: Int, from: ServerSession, frame: Frame.Binary) {
         val payload = frame.data
         if (payload.size > 8_192 || payload.size % 2 != 0) {
@@ -272,7 +292,7 @@ class InternalPttServer {
                 return@withLock
             }
             for ((id, peer) in channel.sessions) {
-                if (id != from.id) peer.outbound.trySend(frame)
+                if (id != from.id) peer.outbound.trySend(Frame.Binary(frame.fin, payload))
             }
         }
     }

@@ -25,6 +25,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.net.ServerSocket
+import kotlin.test.assertContentEquals
 
 /**
  * Exercises the optional on-device relay over a real socket.
@@ -95,6 +96,14 @@ class InternalPttServerTest {
     private fun url(channel: Int, name: String) =
         "ws://127.0.0.1:$port/channel/$channel?name=$name&v=1"
 
+    /**
+     * A distinct byte pattern per [seed], not a single repeated value — the fan-out bug this
+     * pins truncates or garbles frames rather than dropping them outright, and a buffer of one
+     * repeated byte would still "match" after truncation to all-zero or partial reads far more
+     * often than a pattern that varies byte-to-byte.
+     */
+    private fun audioPattern(seed: Int, size: Int = 320) = ByteArray(size) { (seed + it).toByte() }
+
     @Test
     fun `welcome carries the shared audio parameters`() = runBlocking {
         client.webSocket(url(1, "Alice")) {
@@ -147,6 +156,58 @@ class InternalPttServerTest {
             }
         }
     }
+
+    @Test
+    fun `every peer gets a byte-for-byte-correct copy of every frame with three or more listeners`() =
+        runBlocking {
+            client.webSocket(url(5, "Alice")) {
+                val alice = this
+                alice.expect<Welcome>()
+
+                client.webSocket(url(5, "Bob")) {
+                    val bob = this
+                    bob.expect<Welcome>()
+
+                    client.webSocket(url(5, "Carol")) {
+                        val carol = this
+                        carol.expect<Welcome>()
+
+                        alice.send(Frame.Text("""{"type":"talk_request"}"""))
+                        assertTrue(alice.expectFloor { it.isSelf }.isSelf)
+
+                        // A single Frame.Binary instance fanned out to N>=2 peers means N
+                        // writer coroutines race over the SAME ByteBuffer's position/limit —
+                        // this only shows up with two or more OTHER listeners, i.e. three or
+                        // more clients total. Several distinct frames back-to-back gives the
+                        // race more chances to land.
+                        val frames = List(5) { audioPattern(seed = it * 17) }
+                        for (payload in frames) {
+                            alice.send(Frame.Binary(true, payload))
+                        }
+
+                        for ((index, payload) in frames.withIndex()) {
+                            val heardByBob = bob.nextBinaryOrNull()
+                            assertNotNull("Bob must receive frame #$index", heardByBob)
+                            assertContentEquals(
+                                payload,
+                                heardByBob,
+                                "Bob's frame #$index must match byte-for-byte",
+                            )
+                        }
+
+                        for ((index, payload) in frames.withIndex()) {
+                            val heardByCarol = carol.nextBinaryOrNull()
+                            assertNotNull("Carol must receive frame #$index", heardByCarol)
+                            assertContentEquals(
+                                payload,
+                                heardByCarol,
+                                "Carol's frame #$index must match byte-for-byte",
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
     @Test
     fun `only one talker holds the floor at a time`() = runBlocking {

@@ -40,6 +40,10 @@ class PttControllerTest {
         val inbound = MutableSharedFlow<ConnectionEvent>(extraBufferCapacity = 64)
         var connectCalls = 0
         var acceptsAudio = true
+
+        /** Rejects exactly this many subsequent `sendAudio` calls, then goes back to accepting —
+         *  models a relay hiccup on the bip preamble that clears up before real audio starts. */
+        var failNextAudioSends = 0
         val endpoints = mutableListOf<com.github.devapro.pttdroid.network.PttEndpoint>()
 
         override val events: Flow<ConnectionEvent> = inbound
@@ -59,6 +63,10 @@ class PttControllerTest {
 
         override suspend fun sendAudio(pcm: ByteArray): Boolean {
             if (!acceptsAudio) return false
+            if (failNextAudioSends > 0) {
+                failNextAudioSends--
+                return false
+            }
             audioFrames += pcm
             return true
         }
@@ -76,12 +84,17 @@ class PttControllerTest {
     private class FakePlayer : com.github.devapro.pttdroid.audio.VoicePlayerContract {
         var prepared = 0
         var released = 0
+        /** What the next [prepare] call reports — flip to false to simulate a setup failure. */
+        var prepareSucceeds = true
         val played = mutableListOf<ByteArray>()
         // Not named `output`/`volume`: a public `var output` generates a `setOutput` with the
         // same JVM signature as the interface method it sits next to.
         var lastOutput: com.github.devapro.pttdroid.data.settings.AudioOutput? = null
         var lastVolume: Float? = null
-        override fun prepare() { prepared++ }
+        override fun prepare(): Boolean {
+            prepared++
+            return prepareSucceeds
+        }
         override fun play(pcm: ByteArray) { played += pcm }
         override fun setOutput(output: com.github.devapro.pttdroid.data.settings.AudioOutput) {
             lastOutput = output
@@ -266,6 +279,31 @@ class PttControllerTest {
     }
 
     @Test
+    fun `a failed playback setup reaches the user as an error`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        // The defect this exists for: prepare() used to return Unit, so a failed AudioTrack/line
+        // setup was invisible outside a log line — the socket connected, welcome arrived, the UI
+        // showed a normal "connected" state, and the user just heard nothing. See
+        // docs/known-issues.md #38.
+        val (controller, connection, fakes) = harness(this)
+        fakes.second.prepareSucceeds = false
+        controller.start()
+
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+
+        assertEquals(1, fakes.second.prepared)
+        // Matches PttController.PLAYBACK_UNAVAILABLE — kept as a literal here the same way
+        // RELAY_SILENT's wording is asserted as a literal in the keepalive tests below, since the
+        // constant itself is private to PttController.
+        assertEquals("Audio playback is unavailable on this device", controller.state.value.lastError)
+        assertTrue(controller.state.value.isConnected, "a broken speaker must not drop the session")
+
+        controller.shutdown()
+    }
+
+    @Test
     fun `pressing ptt requests the floor but does not transmit yet`() = runTest(
         UnconfinedTestDispatcher(),
     ) {
@@ -360,6 +398,37 @@ class PttControllerTest {
     }
 
     @Test
+    fun `a failed bip preamble does not strand the transmission`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        // The regression this guards: a rejected bip frame used to return out of the whole
+        // coroutine before recorder.start() ran, leaving the server-granted floor open with the
+        // microphone never opened — every listener heard silence and nothing on the talker's side
+        // showed an error. See docs/known-issues.md #39.
+        val (controller, connection, fakes) = harness(this)
+        val microphoneFrame = ByteArray(com.github.devapro.pttdroid.audio.AudioConfig.FRAME_BYTES) {
+            0x2a
+        }
+        fakes.first.frames.trySend(microphoneFrame)
+        // The first bip frame fails, which stops the bip loop right there (the second frame is
+        // never attempted) — so one failure credit is exactly enough to prove real audio still
+        // gets through afterwards.
+        connection.failNextAudioSends = 1
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        controller.requestTalk()
+
+        connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+
+        assertEquals(1, fakes.first.started, "the microphone must open even though the bip failed")
+        assertEquals(1, connection.audioFrames.size, "only the real frame got through, no bip")
+        assertTrue(connection.audioFrames.single().contentEquals(microphoneFrame))
+
+        controller.shutdown()
+    }
+
+    @Test
     fun `a repeated local grant injects the bip only once`() = runTest(UnconfinedTestDispatcher()) {
         val (controller, connection, fakes) = harness(this)
         controller.start()
@@ -427,9 +496,14 @@ class PttControllerTest {
     }
 
     @Test
-    fun `a rejected audio send does not start microphone capture`() = runTest(
+    fun `a transport that rejects every send still opens the microphone`() = runTest(
         UnconfinedTestDispatcher(),
     ) {
+        // The microphone opening unconditionally (see the bip fix, docs/known-issues.md #39) is
+        // deliberate even when the transport is completely dead: the real audio loop is what
+        // discovers that and stops (no frames get through), not a decision made ahead of time by
+        // skipping recorder.start(). The floor is granted either way, and stranding it with the
+        // mic still closed is the worse failure mode.
         val (controller, connection, fakes) = harness(this)
         connection.acceptsAudio = false
         controller.start()
@@ -439,8 +513,8 @@ class PttControllerTest {
 
         connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
 
-        assertTrue(connection.audioFrames.isEmpty())
-        assertEquals(0, fakes.first.started)
+        assertTrue(connection.audioFrames.isEmpty(), "nothing could get through a dead transport")
+        assertEquals(1, fakes.first.started)
 
         controller.shutdown()
     }
