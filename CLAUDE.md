@@ -60,7 +60,7 @@ ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 53 instr
 ./gradlew assembleRelease                      # unsigned unless PTT_KEYSTORE_PATH and friends are set
 ./gradlew :desktopApp:packageDeb               # a .deb (also packageMsi, packageDmg on their native OS)
 ./gradlew -PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64 :shared:compileKotlinIosArm64   # frontend-compile iOS, even on Linux — cheap, catches most cinterop mistakes, part of the normal gate
-adb -s <serial> install -r -g app/build/outputs/apk/debug/app-debug.apk
+adb -s <serial> install -r -g app/build/outputs/apk/debug/PTTdroid-*-debug.apk
 ```
 
 Prerequisites: **JDK 21**, `ANDROID_HOME` set, SDK platform **android-36**. Exact dependency

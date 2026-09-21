@@ -67,10 +67,25 @@ keep rules proved by launching the result — the same reason `:app` ships unmin
 Install the Android app:
 
 ```bash
-adb -s <serial> install -r -g app/build/outputs/apk/debug/app-debug.apk
+adb -s <serial> install -r -g app/build/outputs/apk/debug/PTTdroid-*-debug.apk
 ```
 
 `-g` grants the manifest's runtime permissions up front, which saves clicking through dialogs.
+The glob is deliberate: `:app` names its APKs
+`PTTdroid-<versionName>-<yyyyMMdd-HHmm>-<variant>.apk` rather than `app-<variant>.apk`
+(`androidComponents.onVariants` in `app/build.gradle.kts`), so a build that has been handed to
+someone still says which version it is and when it came out of the machine that built it. The
+stamp is the builder's local wall-clock time, shared by every variant of one Gradle invocation.
+
+Only the file name changes — nothing time-dependent is packaged *into* the APK, so a release build
+is still byte-for-byte reproducible, which is what F-Droid verifies. Gradle removes the previous
+build's APK as a stale output, so the directory holds exactly one per variant; anything scripted
+should still glob it, or read `outputFile` out of the `output-metadata.json` beside it, the way
+`.github/workflows/release.yml` does. The release workflow republishes the file as
+`com.github.devapro.pttdroid_<versionCode>.apk`, which is unaffected by any of this.
+
+Desktop installers are not stamped: jpackage derives their names from `packageVersion`, and Msi
+and Deb both constrain that string's format, so `desktopApp` keeps the plain version.
 
 ## Build constraints — do not "helpfully" bump these
 

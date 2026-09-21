@@ -53,7 +53,7 @@ catalogue is in review. Why it is one channel rather than two, and what releasin
 
 ```bash
 ./gradlew assembleDebug
-adb install -r -g app/build/outputs/apk/debug/app-debug.apk
+adb install -r -g app/build/outputs/apk/debug/PTTdroid-*-debug.apk
 ```
 
 The other two targets run from the same checkout, with the same interface:

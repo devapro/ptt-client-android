@@ -73,11 +73,13 @@ jobs:
             app/build/reports/lint-results-debug.html
             shared/build/reports/lint-results-debug.html
 
+      # Globbed, not named: the APK carries its version and a build timestamp (see
+      # app/build.gradle.kts), and Gradle leaves exactly one APK in this directory.
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
 
       - name: Upload desktop package
         uses: actions/upload-artifact@v4

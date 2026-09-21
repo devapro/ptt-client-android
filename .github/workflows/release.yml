@@ -200,34 +200,46 @@ jobs:
           PTT_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease
 
+      # The APK's file name carries the version and a build timestamp (see app/build.gradle.kts),
+      # so nothing here may hardcode it: Gradle's own output metadata names the file it produced.
       - name: Verify the APK is signed and carries the expected version
+        id: apk
         run: |
           set -euo pipefail
-          apk=app/build/outputs/apk/release/app-release.apk
+          dir=app/build/outputs/apk/release
+          meta=$dir/output-metadata.json
+          if [ ! -f "$meta" ]; then
+            echo "::error::no $meta — assembleRelease produced no APK."
+            exit 1
+          fi
+          apk=$dir/$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['elements'][0]['outputFile'])" "$meta")
           if [ ! -f "$apk" ]; then
             echo "::error::no signed APK at $apk — the signing config did not apply."
             exit 1
           fi
+          echo "path=$apk" >> "$GITHUB_OUTPUT"
           apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
           "$apksigner" verify --print-certs "$apk"
 
           # Gradle's own output metadata, rather than aapt badging: it is exact, and it does not
           # depend on which build-tools the runner happens to ship.
-          python3 - "${{ steps.version.outputs.code }}" "${{ steps.version.outputs.name }}" <<'PY'
+          python3 - "${{ steps.version.outputs.code }}" "${{ steps.version.outputs.name }}" "$meta" <<'PY'
           import json, sys
-          want_code, want_name = int(sys.argv[1]), sys.argv[2]
-          el = json.load(open('app/build/outputs/apk/release/output-metadata.json'))['elements'][0]
+          want_code, want_name, meta = int(sys.argv[1]), sys.argv[2], sys.argv[3]
+          el = json.load(open(meta))['elements'][0]
           assert el['versionCode'] == want_code, (el['versionCode'], want_code)
           assert el['versionName'] == want_name, (el['versionName'], want_name)
           print(f"APK reports {el['versionName']} ({el['versionCode']})")
           PY
 
-      # Named for the application id and version code rather than "app-release.apk", so a
-      # downloaded file still says what it is once it is out of the browser.
+      # Named for the application id and version code rather than the build-stamped name, so a
+      # downloaded file still says what it is once it is out of the browser — and so the published
+      # file name stays identical for two builds of the same tag, which the build-stamped one is
+      # deliberately not.
       - name: Name the APK for release
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk \
+          cp "${{ steps.apk.outputs.path }}" \
              "dist/com.github.devapro.pttdroid_${{ steps.version.outputs.code }}.apk"
 
       - uses: actions/upload-artifact@v4

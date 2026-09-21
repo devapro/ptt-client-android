@@ -125,7 +125,7 @@ Inside the container, `adb` works exactly as on the host:
 
 ```bash
 adb devices
-adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/PTTdroid-*-debug.apk
 adb -s emulator-5554 shell am start -n com.github.devapro.pttdroid/.MainActivity
 ANDROID_SERIAL=emulator-5554 ./gradlew :shared:connectedDebugAndroidTest
 ```

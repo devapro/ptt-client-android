@@ -1,3 +1,5 @@
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 /**
@@ -14,6 +16,15 @@ val appVersionCode: Int by extra
 val defaultRelayHost: String by extra
 val defaultRelayPort: Int by extra
 val defaultRelayTls: Boolean by extra
+
+/**
+ * Wall-clock time of this Gradle invocation, stamped into the APK file names below.
+ *
+ * Read once here rather than per variant, so every APK produced by one invocation carries the
+ * same stamp, and in the builder's own timezone rather than UTC — the question it answers is
+ * "when did I build this", asked by someone holding the file.
+ */
+val buildTimestamp: String = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmm"))
 
 plugins {
     alias(libs.plugins.androidApplication)
@@ -116,6 +127,29 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
+/**
+ * Name every APK `PTTdroid-<versionName>-<yyyyMMdd-HHmm>-<variant>.apk` instead of AGP's default
+ * `app-<variant>.apk`, so a copy that has left the build directory still says which version it is
+ * and when it was built — neither of which a tester holding a shared `app-debug.apk` can recover.
+ *
+ * This renames the *file* only. Nothing time-dependent goes into the APK, so a release build is
+ * still byte-for-byte reproducible, which is what F-Droid checks; the release workflow republishes
+ * it as `com.github.devapro.pttdroid_<versionCode>.apk` regardless, and resolves this name from
+ * `output-metadata.json` rather than hardcoding it.
+ *
+ * A name that changes every build does not pile APKs up: the previous one is a registered task
+ * output, so Gradle's stale-output cleanup removes it and the directory keeps exactly one APK per
+ * variant. Nothing can hardcode the name, though — scripts glob `PTTdroid-*-<variant>.apk` or read
+ * `output-metadata.json`.
+ */
+androidComponents {
+    onVariants { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set("PTTdroid-$appVersionName-$buildTimestamp-${variant.name}.apk")
+        }
     }
 }
 
