@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -90,6 +92,22 @@ fun MainScreen(
                     containerColor = MaterialTheme.colorScheme.background,
                 ),
                 actions = {
+                    // Left of Settings, which it competes with for attention only when a
+                    // record actually arrived: the badge is the whole cue — no notification.
+                    BadgedBox(
+                        badge = {
+                            if (state.historyUnread) {
+                                Badge(containerColor = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                    ) {
+                        IconButton(onClick = { onAction(MainAction.OpenHistory) }) {
+                            Icon(
+                                painter = painterResource(Res.drawable.ic_history),
+                                contentDescription = stringResource(Res.string.cd_history),
+                            )
+                        }
+                    }
                     IconButton(onClick = { onAction(MainAction.OpenSettings) }) {
                         Icon(
                             painter = painterResource(Res.drawable.ic_settings),

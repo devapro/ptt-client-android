@@ -134,4 +134,13 @@
     <!-- Permissions -->
     <string name="permission_mic_required">Microphone access is required to talk</string>
     <string name="permission_grant">Grant microphone access</string>
+
+    <!-- Voice record history -->
+    <string name="history">History</string>
+    <string name="cd_history">Open message history</string>
+    <string name="history_empty">Messages received while the app was in the background are saved here</string>
+    <string name="history_unknown_sender">Unknown</string>
+    <string name="cd_play_record">Play message</string>
+    <string name="cd_stop_record">Stop playback</string>
+    <string name="cd_delete_record">Delete message</string>
 </resources>

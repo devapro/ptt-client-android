@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.SettingsRepository
 import com.github.devapro.pttdroid.domain.PttController
+import com.github.devapro.pttdroid.history.HistoryStore
 import com.github.devapro.pttdroid.internalserver.InternalPttServer
 import com.github.devapro.pttdroid.overlay.OverlayController
 import com.github.devapro.pttdroid.widget.PttWidgetUpdater
@@ -36,6 +37,7 @@ class PttForegroundService : Service() {
 
     private val controller: PttController by inject()
     private val settingsRepository: SettingsRepository by inject()
+    private val historyStore: HistoryStore by inject()
     private val overlayController: OverlayController by inject()
     private val internalServer: InternalPttServer by inject()
 
@@ -47,6 +49,9 @@ class PttForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         scope.launch { PttNotifications.ensureChannel(this@PttForegroundService) }
+        // A record whose WAV made it to disk but whose index entry did not (process death in
+        // between) is invisible to every other path; this is its only collection.
+        scope.launch { historyStore.pruneOrphans() }
         observeState()
     }
 

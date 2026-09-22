@@ -120,6 +120,7 @@ class KtorPttConnectionTest {
                 PttEndpoint(url = "ws://127.0.0.1:$port/channel/1?name=Receiver&v=1"),
             )
         }
+        val historyStore = com.github.devapro.pttdroid.history.FakeHistoryStore()
         val sender = PttController(
             connection = senderConnection,
             recorder = SilentRecorder(),
@@ -134,6 +135,17 @@ class KtorPttConnectionTest {
             },
             channelPersister = {},
             scope = this,
+            historyCapture = com.github.devapro.pttdroid.history.BackgroundRecordCapture(
+                store = historyStore,
+                clock = com.github.devapro.pttdroid.history.FakeClock(),
+                isForeground = com.github.devapro.pttdroid.history.FakeForeground(true),
+                scope = this,
+            ),
+            historyPlayback = com.github.devapro.pttdroid.history.HistoryPlayback(
+                player = SilentPlayer(),
+                store = historyStore,
+                scope = this,
+            ),
         )
 
         try {

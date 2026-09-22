@@ -6,14 +6,22 @@ import com.github.devapro.pttdroid.audio.VoicePlayerContract
 import com.github.devapro.pttdroid.audio.VoiceRecorderContract
 import com.github.devapro.pttdroid.data.settings.SettingsRepository
 import com.github.devapro.pttdroid.domain.PttController
+import com.github.devapro.pttdroid.history.BackgroundRecordCapture
+import com.github.devapro.pttdroid.history.DataStoreHistoryStore
+import com.github.devapro.pttdroid.history.HistoryPlayback
+import com.github.devapro.pttdroid.history.HistoryStore
 import com.github.devapro.pttdroid.network.KtorPttConnection
 import com.github.devapro.pttdroid.network.PttConnection
+import com.github.devapro.pttdroid.reducer.CloseHistoryReducer
 import com.github.devapro.pttdroid.reducer.CloseSettingsReducer
+import com.github.devapro.pttdroid.reducer.DeleteRecordReducer
 import com.github.devapro.pttdroid.reducer.DisconnectReducer
 import com.github.devapro.pttdroid.reducer.DismissErrorReducer
 import com.github.devapro.pttdroid.reducer.EditSettingsReducer
 import com.github.devapro.pttdroid.reducer.InitConnectionReducer
+import com.github.devapro.pttdroid.reducer.OpenHistoryReducer
 import com.github.devapro.pttdroid.reducer.OpenSettingsReducer
+import com.github.devapro.pttdroid.reducer.PlayRecordReducer
 import com.github.devapro.pttdroid.reducer.ReconnectReducer
 import com.github.devapro.pttdroid.reducer.RequestOverlayPermissionReducer
 import com.github.devapro.pttdroid.reducer.SavePlaybackVolumeReducer
@@ -22,6 +30,7 @@ import com.github.devapro.pttdroid.reducer.SetAudioOutputReducer
 import com.github.devapro.pttdroid.reducer.SetChannelReducer
 import com.github.devapro.pttdroid.reducer.SetPlaybackVolumeReducer
 import com.github.devapro.pttdroid.reducer.StartSpeakReducer
+import com.github.devapro.pttdroid.reducer.StopRecordPlaybackReducer
 import com.github.devapro.pttdroid.reducer.StopSpeakReducer
 import com.github.devapro.pttdroid.viewmodel.MainActivityViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +54,12 @@ import org.koin.dsl.module
  * to be shared rather than duplicated as a string literal in three places.
  */
 val SESSION_SCOPE = named("sessionScope")
+
+/**
+ * Named qualifier for the history index `DataStore<Preferences>` — a second store next to the
+ * settings one, bound by each platform's DI module (see `data/history/HistoryDataStore.*`).
+ */
+val HISTORY_DATA_STORE = named("historyDataStore")
 
 /**
  * Everything platform-independent: the session's own coroutine scope, the domain layer, the
@@ -80,10 +95,28 @@ private fun Module.dataDi() {
     // (SharedDiAndroid.kt / SharedDiDesktop.kt), which is why it has to be loaded alongside this
     // one at startKoin time.
     single { SettingsRepository(get()) }
+    // The history index store and the WAV files behind it are platform-bound the same way —
+    // HISTORY_DATA_STORE and HistoryFileStorage come from the platform module.
+    single { DataStoreHistoryStore(get(HISTORY_DATA_STORE), get(), get()) } bind HistoryStore::class
 }
 
 private fun Module.domainDi() {
     single { KtorPttConnection() } bind PttConnection::class
+    single {
+        BackgroundRecordCapture(
+            store = get(),
+            clock = get(),
+            isForeground = get(),
+            scope = get(SESSION_SCOPE),
+        )
+    }
+    single {
+        HistoryPlayback(
+            player = get<VoicePlayerContract>(),
+            store = get(),
+            scope = get(SESSION_SCOPE),
+        )
+    }
     single {
         val settingsRepository = get<SettingsRepository>()
         PttController(
@@ -93,6 +126,8 @@ private fun Module.domainDi() {
             settingsProvider = { settingsRepository.settings.first() },
             channelPersister = { channel -> settingsRepository.setChannel(channel) },
             scope = get(SESSION_SCOPE),
+            historyCapture = get(),
+            historyPlayback = get(),
         )
     }
 }
@@ -113,6 +148,11 @@ private fun Module.reducerDi() {
     factoryOf(::SetAudioOutputReducer)
     factoryOf(::SetPlaybackVolumeReducer)
     factoryOf(::SavePlaybackVolumeReducer)
+    factoryOf(::OpenHistoryReducer)
+    factoryOf(::CloseHistoryReducer)
+    factoryOf(::PlayRecordReducer)
+    factoryOf(::StopRecordPlaybackReducer)
+    factoryOf(::DeleteRecordReducer)
 }
 
 private fun Module.appDi() {
@@ -136,6 +176,11 @@ private fun Module.appDi() {
                 get<SetAudioOutputReducer>(),
                 get<SetPlaybackVolumeReducer>(),
                 get<SavePlaybackVolumeReducer>(),
+                get<OpenHistoryReducer>(),
+                get<CloseHistoryReducer>(),
+                get<PlayRecordReducer>(),
+                get<StopRecordPlaybackReducer>(),
+                get<DeleteRecordReducer>(),
             ),
         )
     }

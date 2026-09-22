@@ -37,6 +37,8 @@ thumb reach. Rationale and the full state table: [`ui-design.md`](ui-design.md).
 - **Error banner** — the last transport or protocol error, dismissible. It used to be a line of
   small red text under the button with no way to clear it, so a refusal from twenty minutes ago
   sat there looking like a live fault.
+- **Voice history** — an icon in the top bar, left of the gear, with a red badge while unheard
+  records are waiting. What it collects and when: see "Voice history" below.
 - **Landscape and tablets** — the readout moves beside the button rather than above it, and
   neither column stretches past 520.dp.
 
@@ -124,6 +126,30 @@ transmission it had begun. It is drawn from primitives rather than loaded drawab
 inflated against a service `Context` where a vector's `?attr/…` tint has no guaranteed theme, and
 a throw there takes the overlay window with it.
 
+## Voice history
+
+You were not looking at the phone, and someone called. The received transmissions you missed are
+kept as short recordings — the ones that arrived **while the app was not in the foreground** — and
+gathered under the history icon in the top bar. A red badge says there are unheard ones; opening
+the screen clears it. No notification is raised: the badge is the whole cue, on purpose.
+
+- **What becomes a record** — one record per floor: a record starts when the channel starts
+  broadcasting and ends when the floor is released, so two consecutive speakers are two records.
+  The app's own foreground state is sampled once, when the transmission *begins*; if you open the
+  app mid-message it still saves, and a message that began while you were on screen is never
+  saved. If the link drops mid-message what was received so far is kept.
+- **Answering clears it** — taking the floor within 30 seconds of a record's end deletes it, and
+  every other record from that same burst, before it can pile up as a reminder of a conversation
+  you just had. Records older than the window stay.
+- **Listening back** — tap a record to replay it through the same speaker/earpiece route and
+  volume as live audio; live audio always interrupts history playback. Tap again, or a new
+  transmission arriving, stops it. Each row also deletes itself.
+- **Retention** — the newest 50 records, on-device only (WAV files plus a small index); older
+  ones are dropped automatically. Records are capped at 2 minutes each.
+- **Where it does not run** — desktop and iOS keep the screen but save nothing: their "foreground"
+  is not the same notion as a phone's, so capture is inert there by decision
+  (`architecture.md#history-capture`).
+
 ## On-device relay
 
 With **Host a relay on this device** enabled, the app runs the same protocol-v1 relay internally
@@ -137,7 +163,8 @@ own to `127.0.0.1`. No separate server needed.
   revocation.
 - No audio compression; raw 16 kHz mono PCM (~32 kB/s). Fine on a LAN, wasteful over the internet.
 - The on-device relay serves plaintext only. Encryption means pointing at `ptt-server`.
-- No message history, no text chat, no per-user mute.
+- No text chat, no per-user mute. Voice history records audio, not transcripts, and only what
+  arrived while the app was backgrounded.
 
 ## Related
 

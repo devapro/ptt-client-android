@@ -128,4 +128,13 @@
     <!-- Permissions -->
     <string name="permission_mic_required">Для разговора нужен доступ к микрофону</string>
     <string name="permission_grant">Разрешить доступ к микрофону</string>
+
+    <!-- Voice record history -->
+    <string name="history">История</string>
+    <string name="cd_history">Открыть историю сообщений</string>
+    <string name="history_empty">Здесь появятся сообщения, полученные, когда приложение было в фоне</string>
+    <string name="history_unknown_sender">Неизвестный</string>
+    <string name="cd_play_record">Прослушать сообщение</string>
+    <string name="cd_stop_record">Остановить воспроизведение</string>
+    <string name="cd_delete_record">Удалить сообщение</string>
 </resources>

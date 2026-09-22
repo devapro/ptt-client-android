@@ -22,6 +22,8 @@ data class PttState(
     val isFloorHeldByOther: Boolean = false,
     val peers: Int = 0,
     val lastError: String? = null,
+    /** The history record currently being replayed through the speaker, or null. */
+    val historyPlayingId: String? = null,
 ) {
     val isConnected: Boolean get() = status is ConnectionStatus.Connected
 

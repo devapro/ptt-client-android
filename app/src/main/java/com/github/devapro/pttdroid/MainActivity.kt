@@ -29,10 +29,12 @@ import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.LanguageMode
 import com.github.devapro.pttdroid.data.settings.SettingsRepository
 import com.github.devapro.pttdroid.data.settings.applyLocale
+import com.github.devapro.pttdroid.foreground.ActivityForegroundTracker
 import com.github.devapro.pttdroid.model.MainAction
 import com.github.devapro.pttdroid.model.MainEvent
 import com.github.devapro.pttdroid.model.ScreenState
 import com.github.devapro.pttdroid.overlay.OverlayController
+import com.github.devapro.pttdroid.ui.HistoryScreen
 import com.github.devapro.pttdroid.ui.MainScreen
 import com.github.devapro.pttdroid.ui.SettingsScreen
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
@@ -144,6 +146,11 @@ class MainActivity : ComponentActivity() {
                             onAction = viewModel::onAction,
                         )
                     }
+
+                    ScreenState.Screen.History -> HistoryScreen(
+                        state = state,
+                        onAction = viewModel::onAction,
+                    )
                 }
             }
 
@@ -156,6 +163,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        ActivityForegroundTracker.onActivityStarted()
         // The floating bubble is for reaching PTT from other apps; over our own screen it just
         // covers the button it duplicates.
         overlayController.setAppVisible(true)
@@ -189,6 +197,7 @@ class MainActivity : ComponentActivity() {
      */
     override fun onStop() {
         overlayController.setAppVisible(false)
+        ActivityForegroundTracker.onActivityStopped()
         super.onStop()
     }
 

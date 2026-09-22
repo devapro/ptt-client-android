@@ -59,4 +59,18 @@ sealed interface MainAction {
      * value the slider passed through on the way.
      */
     data class SavePlaybackVolume(val volume: Float) : MainAction
+
+    // --- voice record history ---------------------------------------------------------------
+
+    /** Open the history screen. Viewing the list is what clears the unread badge. */
+    data object OpenHistory : MainAction
+
+    data object CloseHistory : MainAction
+
+    /** Replay a stored record through the speaker, unless the channel is busy. */
+    data class PlayRecord(val recordId: String) : MainAction
+
+    data object StopRecordPlayback : MainAction
+
+    data class DeleteRecord(val recordId: String) : MainAction
 }

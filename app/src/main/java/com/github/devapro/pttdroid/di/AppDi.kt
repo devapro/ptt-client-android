@@ -4,8 +4,10 @@ import com.github.devapro.pttdroid.audio.VoicePlayer
 import com.github.devapro.pttdroid.audio.VoicePlayerContract
 import com.github.devapro.pttdroid.audio.VoiceRecorder
 import com.github.devapro.pttdroid.audio.VoiceRecorderContract
+import com.github.devapro.pttdroid.domain.ForegroundProvider
 import com.github.devapro.pttdroid.domain.PttSessionLauncher
 import com.github.devapro.pttdroid.domain.ServicePttSessionLauncher
+import com.github.devapro.pttdroid.foreground.ActivityForegroundTracker
 import com.github.devapro.pttdroid.overlay.OverlayController
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.bind
@@ -30,6 +32,10 @@ val appModule = module {
     single { VoicePlayer(androidContext()) } bind VoicePlayerContract::class
 
     single<PttSessionLauncher> { ServicePttSessionLauncher(androidContext()) }
+
+    // MainActivity's start/stop counts, reported into the tracker — see its KDoc for why a
+    // stopped Activity and the overlay/widget do not count as foreground.
+    single<ForegroundProvider> { ActivityForegroundTracker }
 
     single {
         OverlayController(

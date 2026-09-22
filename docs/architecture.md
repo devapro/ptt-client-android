@@ -6,7 +6,7 @@ by one application-scoped controller.
 **Compose Multiplatform, four modules, three shipped platforms.** `:shared` is a Kotlin
 Multiplatform module (`androidTarget` + `jvm("desktop")` + `iosArm64`/`iosSimulatorArm64`, the last
 two behind a build guard — see the iOS paragraph below) holding everything platform-independent:
-`domain/`, `mvi/`, `model/`, `data/settings/`, `network/`, the Compose UI (`ui/`), the fifteen
+`domain/`, `mvi/`, `model/`, `data/settings/`, `history/`, `network/`, the Compose UI (`ui/`), the twenty
 `reducer/`s, `MainActivityViewModel`, and the platform-independent half of the Koin graph
 (`di/SharedDi.kt`). A `PttLog` Kermit facade replaces Timber for all of this code, since Timber is
 Android-only. Below `commonMain`, three more source sets carry platform-specific code:
@@ -19,16 +19,18 @@ Android-only. Below `commonMain`, three more source sets carry platform-specific
   exist on iOS — `javax.net.ssl` and Ktor's CIO engine are JVM-only APIs — so this source set is
   what lets Android and desktop share them without iOS being forced to provide a stub. `androidMain`
   and `desktopMain` themselves hold only what's left after that: each platform's own `DataStore`
-  wiring and Koin module.
-- **`androidMain`** — `createAndroidSettingsDataStore(Context)`, `SharedDiAndroid.kt`.
+  wiring (settings and history) and Koin module.
+- **`androidMain`** — `createAndroidSettingsDataStore(Context)`, `createAndroidHistoryDataStore(Context)`,
+  `SharedDiAndroid.kt`.
 - **`desktopMain`** — `DesktopVoiceRecorder`/`DesktopVoicePlayer` (`javax.sound.sampled`),
-  `createDesktopSettingsDataStore()`, `SharedDiDesktop.kt`.
+  `createDesktopSettingsDataStore()`, `createDesktopHistoryDataStore()`, `SharedDiDesktop.kt`.
 
 `:app` is the Android application launcher: `MainActivity`, `service/`, `overlay/`, `widget/`, the
 Android-only half of DI (`di/AppDi.kt` — `VoiceRecorder`, `VoicePlayer`, `OverlayController`,
 `ServicePttSessionLauncher`), and everything else genuinely Android-only (audio capture/playback,
-the foreground service, the widget, the overlay) — 13 Kotlin files in total; everything else that
-used to live here moved to `:shared` over the course of the migration. `:desktopApp` hosts the real
+the foreground service, the widget, the overlay, the `foreground/ActivityForegroundTracker`
+started/stopped-count that answers `domain/ForegroundProvider`) — 14 Kotlin files in total;
+everything else that used to live here moved to `:shared` over the course of the migration. `:desktopApp` hosts the real
 shared UI in a `Window {}` and starts Koin itself; its `PttSessionLauncher` just calls
 `PttController.start()`/`stop()` directly (no foreground-service concept to start first). See
 [`audio-pipeline.md`](audio-pipeline.md#desktop-capture--playback) for its recorder/player. The
@@ -89,7 +91,7 @@ down a transmission in flight.
 
 | Package | Contents | Module |
 |---|---|---|
-| `domain/` | `PttController`, `PttState` + `ConnectionStatus`, `ReconnectPolicy`, `KeepalivePolicy`, `PttSessionLauncher`, `canHostRelay`/`canRouteAudioOutput` (`expect val`s — see below) — commonMain; `canHostRelay = true` — jvmCommonMain; `canRouteAudioOutput = true` — androidMain, `= false` — desktopMain (the one capability the two JVM targets answer differently, so it cannot live in `jvmCommonMain`); `IosPttSessionLauncher`, `canHostRelay = false`, `canRouteAudioOutput = true` — iosMain | `:shared` |
+| `domain/` | `PttController`, `PttState` + `ConnectionStatus`, `ReconnectPolicy`, `KeepalivePolicy`, `PttSessionLauncher`, the `UtcClock`/`ForegroundProvider` fun-interface seams (see [History capture](#history-capture)) — commonMain, with `JvmUtcClock`/`IosUtcClock` in jvmCommonMain/iosMain; `canHostRelay`/`canRouteAudioOutput` (`expect val`s — see below): `canHostRelay = true` — jvmCommonMain; `canRouteAudioOutput = true` — androidMain, `= false` — desktopMain (the one capability the two JVM targets answer differently, so it cannot live in `jvmCommonMain`); `IosPttSessionLauncher`, `canHostRelay = false`, `canRouteAudioOutput = true` — iosMain | `:shared` |
 | `network/` | `PttConnection` (interface), `PttEndpoint`, `protocol/Messages.kt` — all commonMain; `KtorPttConnection` (commonMain, calls the `createPttHttpClient`/`describePlatformCause` `expect`s); `tls/PinnedTrust.kt`, `PttHttpClient.jvm.kt` — jvmCommonMain (JVM-only: OkHttp, `javax.net.ssl`); `tls/PinnedTrust.ios.kt`, `PttHttpClient.ios.kt` — iosMain (Darwin engine, `CommonCrypto`/`Security` cinterop) | `:shared` |
 | `audio/` | `AudioConfig`, `AudioContracts` (contracts), `FrameAccumulator`, `PcmGain` — commonMain; `VoiceRecorder`, `VoicePlayer` (Android `AudioRecord`/`AudioTrack` + `AudioManager` routing) — `:app`; `DesktopVoiceRecorder`, `DesktopVoicePlayer` (`javax.sound.sampled`) — `:shared` desktopMain; `IosAudioSession`, `IosVoiceRecorder`, `IosVoicePlayer` (`AVAudioEngine`/`AVAudioConverter`/`AVAudioSourceNode`, Phase 7b) — `:shared` iosMain | `:shared` commonMain / desktopMain / iosMain, and `:app` |
 | `service/` | `PttForegroundService`, `PttNotifications`, `PttServiceCommands` | `:app` |
@@ -97,11 +99,12 @@ down a transmission in flight.
 | `widget/` | `PttWidget`, `PttWidgetAction`, `PttWidgetReceiver`, `PttWidgetUpdater` | `:app` |
 | `internalserver/` | `InternalPttServer` — optional on-device relay (Ktor CIO server, JVM-only, unreachable from iOS — see `domain/canHostRelay`) | `:shared` jvmCommonMain |
 | `data/settings/` | `AppSettings`, `ServerMode`, `ServerAddress`, `ThemeMode`, `LanguageMode`, `AudioOutput`, `CertificatePin`, `SettingsRepository` (takes a `DataStore<Preferences>` directly) — commonMain; `createAndroidSettingsDataStore(Context)`/`createDesktopSettingsDataStore()`/`createIosSettingsDataStore()` — plain platform functions, not `expect`/`actual`, called only from each platform's own DI module — see [Transport security](#transport-security) below for the trust-manager seam and the "Settings storage" note for the DataStore one | `:shared` |
+| `history/` | the voice-record history module (see [History capture](#history-capture)): `VoiceRecord` (the `@Serializable` index entry), `Wav` (hand-rolled RIFF/PCM16LE codec), `HistoryFileStorage`/`HistoryStore` (interfaces) and `DataStoreHistoryStore` (the JSON-index store), `BackgroundRecordCapture` (the floor-bounded recorder), `HistoryPlayback` (the file-pump replay) — commonMain; `JvmHistoryFileStorage` (`java.io`) — jvmCommonMain, `IosHistoryFileStorage` (okio + `NSFileManager`, plus `createIosHistoryDataStore()`) — iosMain; `createAndroidHistoryDataStore(Context)`/`createDesktopHistoryDataStore()` (`data/history/HistoryDataStore.*`) — androidMain/desktopMain | `:shared` |
 | `mvi/` | `ActionProcessor`, `Reducer`, `MviViewModel` | `:shared` commonMain |
 | `model/` | `MainAction`, `ScreenState`, `MainEvent` | `:shared` commonMain |
-| `reducer/` | one reducer per action (15) | `:shared` commonMain |
-| `ui/` | `PttUiStatus` (the shared state→presentation mapping), `MainScreen`, `SettingsScreen`, `App()` (iOS's UI root, `App.kt`), `components/`, `theme/`, `viewmodel/MainActivityViewModel` | `:shared` commonMain |
-| `di/` | `SharedDi.kt` (platform-independent graph) — `:shared` commonMain; `SharedDiAndroid.kt`/`SharedDiDesktop.kt`/`SharedDiIos.kt` (platform providers), `KoinIos.kt` (`initKoinIos()`, iOS's Koin entry point) — `:shared` androidMain/desktopMain/iosMain; `AppDi.kt` (Android-only: `VoiceRecorder`, `VoicePlayer`, `OverlayController`, `ServicePttSessionLauncher`) — `:app` | split across `:shared` and `:app` |
+| `reducer/` | one reducer per action (20, of which five — `OpenHistory`/`CloseHistory`/`PlayRecord`/`StopRecordPlayback`/`DeleteRecord` — serve the history screen) | `:shared` commonMain |
+| `ui/` | `PttUiStatus` (the shared state→presentation mapping), `MainScreen`, `SettingsScreen`, `HistoryScreen`, `App()` (iOS's UI root, `App.kt`), `components/`, `theme/`, `viewmodel/MainActivityViewModel` | `:shared` commonMain |
+| `di/` | `SharedDi.kt` (platform-independent graph; hosts the `HISTORY_DATA_STORE` qualifier next to `SESSION_SCOPE`) — `:shared` commonMain; `SharedDiAndroid.kt`/`SharedDiDesktop.kt`/`SharedDiIos.kt` (platform providers), `KoinIos.kt` (`initKoinIos()`, iOS's Koin entry point) — `:shared` androidMain/desktopMain/iosMain; `AppDi.kt` (Android-only: `VoiceRecorder`, `VoicePlayer`, `OverlayController`, `ServicePttSessionLauncher`, `ForegroundProvider` ← `ActivityForegroundTracker`) — `:app` | split across `:shared` and `:app` |
 | `MainViewController.kt` | `MainViewController()` — hosts `App()` via `ComposeUIViewController`, called from `iosApp/iosApp/ContentView.swift` | `:shared` iosMain |
 
 ## The MVI loop
@@ -147,6 +150,10 @@ Reducers no longer touch sockets or audio — they call `PttController` or `PttS
 | `SetAudioOutput(o)` | `SetAudioOutputReducer` | Speaker ↔ earpiece: applies to the player, then persists |
 | `SetPlaybackVolume(v)` | `SetPlaybackVolumeReducer` | The slider under a finger — reaches the speaker, writes nothing |
 | `SavePlaybackVolume(v)` | `SavePlaybackVolumeReducer` | The slider let go — one DataStore write for the whole drag |
+| `OpenHistory` / `CloseHistory` | corresponding reducers | Switch to/from the History screen; opening marks every current record seen (the badge's read receipt) |
+| `PlayRecord(id)` | `PlayRecordReducer` | Looks the record up in the store, `PttController.playHistory()` — refused there while the floor is busy |
+| `StopRecordPlayback` | `StopRecordPlaybackReducer` | `PttController.stopHistoryPlayback()`, no-op when nothing plays |
+| `DeleteRecord(id)` | `DeleteRecordReducer` | Stops playback first if that row was audible, then removes file and index entry |
 
 ## Settings form state
 
@@ -235,20 +242,27 @@ definitions depend on):
 - **`:shared` commonMain (`SharedDi.kt`)** — everything platform-independent: `CoroutineContextProvider`,
   the named `sessionScope` (`SupervisorJob + Dispatchers.IO`, exposed as the public qualifier
   `SESSION_SCOPE` rather than a private string, since three different modules now need to `get()`
-  against the exact same scope instance), `SettingsRepository`, `KtorPttConnection` (bound to
-  `PttConnection`), `PttController`, all fifteen reducers, `MainActionProcessor`, and
-  `MainActivityViewModel` (`viewModelOf`).
+  against the exact same scope instance), `SettingsRepository`, the `DataStoreHistoryStore` (bound as
+  `HistoryStore`, taking the named `HISTORY_DATA_STORE` and the platform's `HistoryFileStorage`/
+  `UtcClock`), `BackgroundRecordCapture` and `HistoryPlayback` (which `PttController` now requires),
+  `KtorPttConnection` (bound to `PttConnection`), `PttController`, all twenty reducers,
+  `MainActionProcessor`, and `MainActivityViewModel` (`viewModelOf`).
 - **`:shared` androidMain / desktopMain (`SharedDiAndroid.kt` / `SharedDiDesktop.kt`)** — each
-  platform's `DataStore<Preferences>` (via `createAndroidSettingsDataStore(androidContext())` /
-  `createDesktopSettingsDataStore()`) and `InternalPttServer` (`jvmDi()` in `SharedDiJvm.kt`,
+  platform's settings `DataStore<Preferences>` (via `createAndroidSettingsDataStore(androidContext())` /
+  `createDesktopSettingsDataStore()`) *and* its history ones (`HISTORY_DATA_STORE` via
+  `createAndroidHistoryDataStore(...)`/`createDesktopHistoryDataStore()`, `HistoryFileStorage` over a
+  platform-chosen directory, `JvmUtcClock`), plus `InternalPttServer` (`jvmDi()` in `SharedDiJvm.kt`,
   `jvmCommonMain`, called from both). Desktop's module additionally binds the real
   `VoiceRecorderContract`/`VoicePlayerContract`/`PttSessionLauncher` implementations
   (`DesktopVoiceRecorder`/`DesktopVoicePlayer`/`DesktopPttSessionLauncher`), since there is
-  no separate "desktop app" module to split those into the way Android has `:app`.
+  no separate "desktop app" module to split those into the way Android has `:app`, and a
+  `ForegroundProvider` hard-wired to `true` — desktop has no foreground/background distinction to
+  sample, which makes history capture inert there by decision (see [History capture](#history-capture)).
 - **`:app` (`AppDi.kt`)** — Android-only classes that need a real `Context`, `AudioRecord`/
   `AudioTrack`, or `PttForegroundService`: `VoiceRecorder`, `VoicePlayer` (bound to their
   contracts; `VoicePlayer` takes `androidContext()` for the `AudioManager` half of the
-  speaker/earpiece routing), `ServicePttSessionLauncher`, `OverlayController`.
+  speaker/earpiece routing), `ServicePttSessionLauncher`, `OverlayController`, and the
+  `ForegroundProvider` answered by `foreground/ActivityForegroundTracker`.
 
 `PTTdroidApplication.onCreate()` calls `startKoin { modules(sharedModule, sharedAndroidModule,
 appModule) }`; `:desktopApp`'s `main()` calls `startKoin { modules(sharedModule,
@@ -304,6 +318,70 @@ Android XML (`AndroidManifest.xml`'s `android:label`, `res/xml/ptt_widget_info.x
 `translatable="false"` — it is the product name, and marking it so is also what keeps lint's
 `MissingTranslation` from demanding a translation of it now that locale folders exist under
 `app/src/main/res/`.
+
+## History capture
+
+`history/` is the voice-record history: a transmission that arrives **while the app is in the
+background** is saved so it can be replayed later from `ui/HistoryScreen.kt`, which the user
+reaches through the clock icon on `MainScreen` — badged red while any record is newer than the
+last time the list was opened. Everything the feature does and does not save comes down to
+decisions made in its spec interview; they are recorded here because the code alone does not say
+why they are that way.
+
+**The floor is the boundary.** The wire carries no per-transmission metadata — audio frames are
+anonymous — but `floor` messages say exactly who holds the channel, so one record is one remote
+floor hold: a `floor` naming a new remote holder starts a capture, and release (an empty `floor`),
+the floor changing hands, or the session dropping closes it. A hold that never started because we
+were the talker is never recorded.
+
+**Foreground-ness is sampled once, at the record's start** (`domain/ForegroundProvider`, answered
+on Android by `foreground/ActivityForegroundTracker` counting STARTED Activities — the overlay
+bubble and the widget deliberately do not count, since talking through them is exactly the
+background use this feature serves). Two consequences were chosen deliberately: a record that
+began in the background is finished and saved even if the user opens the app mid-transmission —
+the beginning was already missed — and a record that began in the foreground stays unrecorded even
+if the app then backgrounds. Frames buffer in memory, not on disk; a record is capped at two
+minutes of wire audio (3000 × 40 ms frames) as a runaway guard, and a disconnect saves the partial
+rather than dropping it.
+
+**Answering deletes the message.** Taking the floor ourselves purges every record that *ended*
+within the last 30 seconds — not just the newest one, so being answered across a burst of
+voicemails clears the whole burst. This is the user's contract for why a record exists at all:
+it is an unacknowledged call, and once acknowledged it leaves.
+
+**Storage is files + a JSON index, not a database.** The audio is a canonical 44-byte-header WAV
+(`history/Wav.kt`, a hand-rolled codec — the payload is already PCM16LE/16 kHz/mono) written
+whole at record end into a platform directory (Android `filesDir/history`, desktop
+`$XDG_CONFIG_HOME/ptt-client/history`, iOS `<Documents>/history` via okio). The index is a second
+preferences DataStore (`history_index.preferences_pb`, bound under the `HISTORY_DATA_STORE`
+qualifier, same file-shape rationale as `SettingsRepository`) holding one `@Serializable`
+`List<VoiceRecord>` newest-first under a single key — the whole list is read on screen entry and
+rewritten whole on change, which is what keeps the retention FIFO (cap 50, evicted records lose
+file and entry together) one transaction. A corrupt index is read as empty and heals on the next
+write; `PttForegroundService.onCreate` sweeps files the index no longer names
+(`pruneOrphans`). Unread-ness is never stored per record: the badge shows `endedAtMs > lastViewedAt`
+for any record, `markAllSeen(clock.nowMs())` runs when the list opens (monotonic, so a clock jump
+backwards cannot resurrect unread), and there is deliberately no notification — badge only.
+
+**Playback reuses the live speaker and always loses to it.** `HistoryPlayback` pumps the stored
+PCM back through the same `VoicePlayerContract` at wire rate (40 ms per frame — `AudioTrack`
+writes are non-blocking, so a burst would just be dropped), which makes history respect the
+speaker/earpiece and volume preferences for free. Because it is the same single track, live audio
+outranks history everywhere: `playHistory` refuses while the floor is busy in any direction, and
+an incoming frame, a disconnect, or the floor changing hands — theirs or ours — silences a running
+replay first. The
+id of what is audible lives in `HistoryPlayback.playingId` (a `StateFlow` the controller mirrors
+into `PttState.historyPlayingId`); leaving the history screen lets playback survive going back to
+Main, and deleting the playing row stops it first.
+
+**Desktop and iOS bind `ForegroundProvider { true }`**, so capture is inert there by decision and
+the history screen — reachable, since it lives in the shared `MainScreen` — stays empty.
+
+The five actions (`OpenHistory`, `CloseHistory`, `PlayRecord`, `StopRecordPlayback`,
+`DeleteRecord`) get one reducer each; `ScreenState.history`/`historyUnread` are mirrored from
+`HistoryStore`'s flows by `MainActivityViewModel`, the same way the settings pair are. Behaviour
+tests live in `shared/src/commonTest/.../history/` (capture rules, WAV round-trip, the pump's
+pacing) and `jvmCommonTest/.../history/` (the real DataStore-backed store, temp dirs and all).
 
 ## The relay address
 

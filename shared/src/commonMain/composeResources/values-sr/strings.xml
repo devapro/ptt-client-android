@@ -127,4 +127,13 @@
     <!-- Permissions -->
     <string name="permission_mic_required">За говор је потребан приступ микрофону</string>
     <string name="permission_grant">Дозволи приступ микрофону</string>
+
+    <!-- Voice record history -->
+    <string name="history">Историја</string>
+    <string name="cd_history">Отвори историју порука</string>
+    <string name="history_empty">Поруке примљене док је апликација била у позадини појављују се овде</string>
+    <string name="history_unknown_sender">Непознат</string>
+    <string name="cd_play_record">Пусти поруку</string>
+    <string name="cd_stop_record">Заустави пуштање</string>
+    <string name="cd_delete_record">Обриши поруку</string>
 </resources>

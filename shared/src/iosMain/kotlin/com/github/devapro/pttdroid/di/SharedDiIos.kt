@@ -1,14 +1,24 @@
 package com.github.devapro.pttdroid.di
 
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import com.github.devapro.pttdroid.audio.IosVoicePlayer
 import com.github.devapro.pttdroid.audio.IosVoiceRecorder
 import com.github.devapro.pttdroid.audio.VoicePlayerContract
 import com.github.devapro.pttdroid.audio.VoiceRecorderContract
 import com.github.devapro.pttdroid.data.settings.createIosSettingsDataStore
+import com.github.devapro.pttdroid.domain.ForegroundProvider
 import com.github.devapro.pttdroid.domain.IosPttSessionLauncher
+import com.github.devapro.pttdroid.domain.IosUtcClock
 import com.github.devapro.pttdroid.domain.PttSessionLauncher
+import com.github.devapro.pttdroid.domain.UtcClock
+import com.github.devapro.pttdroid.history.HistoryFileStorage
+import com.github.devapro.pttdroid.history.IosHistoryFileStorage
+import com.github.devapro.pttdroid.history.createIosHistoryDataStore
+import com.github.devapro.pttdroid.history.iosHistoryDirectoryPath
+import kotlinx.cinterop.ExperimentalForeignApi
+import okio.Path.Companion.toPath
 import org.koin.dsl.module
 
 /**
@@ -28,6 +38,12 @@ import org.koin.dsl.module
  */
 val sharedIosModule = module {
     single<DataStore<Preferences>> { createIosSettingsDataStore() }
+    single(HISTORY_DATA_STORE) { createIosHistoryDataStore() }
+    single<UtcClock> { IosUtcClock() }
+    single<HistoryFileStorage> { IosHistoryFileStorage(iosHistoryDirectoryPath()) }
+    // Like desktop: no background-receive surface worth recording for, so capture stays inert
+    // and replay works over anything the paired phone stored.
+    single<ForegroundProvider> { ForegroundProvider { true } }
 
     single<VoiceRecorderContract> { IosVoiceRecorder(get(SESSION_SCOPE)) }
     single<VoicePlayerContract> { IosVoicePlayer() }

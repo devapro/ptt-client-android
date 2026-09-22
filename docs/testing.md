@@ -8,24 +8,24 @@
 | `shared/src/androidInstrumentedTest/` | Compose UI tests, plus the TLS and settings-migration integration tests — needs a running device or emulator. Moved here from `app/src/androidTest/` in Phase 5, since the composables and the settings/network code they exercise now live in `:shared` |
 
 ```bash
-./gradlew :shared:testDebugUnitTest :shared:desktopTest   # 240 tests, on both targets — verified, 0 failures
+./gradlew :shared:testDebugUnitTest :shared:desktopTest   # 286 tests, on both targets — verified, 0 failures
 ./gradlew :app:testDebugUnitTest     # 0 — nothing left in :app after Phase 5
 ./gradlew lintDebug :shared:lintDebug              # :app 21 pre-existing findings, :shared 0
 ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 53 tests: 47 UI + 3 migration + 3 TLS (skipped without -Pandroid.testInstrumentationRunnerArguments.relayHost=...); ANDROID_SERIAL picks the device
 ```
 
-The counts and test-class breakdown below are re-verified as of the Settings MVI refactor
-(`:shared:testDebugUnitTest` and `:shared:desktopTest` each produce 240 tests
+The counts and test-class breakdown below are re-verified as of the voice-history feature
+(`:shared:testDebugUnitTest` and `:shared:desktopTest` each produce 286 tests
 with 0 failures; `:shared:connectedDebugAndroidTest` produces 53 with 50 passing and 3 skipped) by
 actually running each command, not by arithmetic on the table.
 
-## Unit tests (240, all passing, on both `androidTarget` and `desktop`)
+## Unit tests (286, all passing, on both `androidTarget` and `desktop`)
 
 | Test class | Tests | What it pins down |
 |---|---|---|
 | `network/ProtocolSerializationTest` | 9 | Exact JSON for every message type — this is a contract with a separate codebase, so the tests assert literal wire text, not just round-trips. Includes tolerance of unknown fields |
 | `domain/ReconnectPolicyTest` | 4 | Backoff grows, respects the 30 s cap, never drops below the base, is genuinely jittered, and resets |
-| `domain/PttControllerTest` | 32 | The floor state machine, driven through a fake `PttConnection`. Most importantly: **pressing PTT must not open the microphone** — only a server `floor{isSelf:true}` may start transmission. Also `floor_busy`, another user holding the floor disabling `canTalk`, release, incoming audio reaching the player, disconnect resetting state, and `clearError` dropping a stale error without dropping the session. Then the negative space: pressing while disconnected or while somebody else holds the floor sends nothing, a second press does not send a second request, releasing what we never held sends nothing, somebody else's grant clears our pending request, and losing the socket mid-transmission closes the microphone. Then the keepalive (known-issues #36), on virtual time: a socket that has gone quiet is probed with `ping` before it is given up on and redialled after three silent intervals; a `pong` puts the countdown back to zero; audio counts as proof of life, so a channel with traffic on it is never probed; the watchdog stops with the socket it was watching; and the `malformed_message` an older relay answers `ping` with is treated as proof of life rather than as a fault to show the user |
+| `domain/PttControllerTest` | 49 | The floor state machine, driven through a fake `PttConnection`. Most importantly: **pressing PTT must not open the microphone** — only a server `floor{isSelf:true}` may start transmission. Also `floor_busy`, another user holding the floor disabling `canTalk`, release, incoming audio reaching the player, disconnect resetting state, and `clearError` dropping a stale error without dropping the session. Then the negative space: pressing while disconnected or while somebody else holds the floor sends nothing, a second press does not send a second request, releasing what we never held sends nothing, somebody else's grant clears our pending request, and losing the socket mid-transmission closes the microphone. Then the keepalive (known-issues #36), on virtual time: a socket that has gone quiet is probed with `ping` before it is given up on and redialled after three silent intervals; a `pong` puts the countdown back to zero; audio counts as proof of life, so a channel with traffic on it is never probed; the watchdog stops with the socket it was watching; and the `malformed_message` an older relay answers `ping` with is treated as proof of life rather than as a fault to show the user. Then the history wiring: a received transmission lands in the store as a record, a disconnect mid-message saves what arrived, taking the floor purges the records answered inside the 30 s window, live audio arriving silences a history replay, and a replay refuses to start while someone else holds the floor |
 | `data/AppSettingsTest` | 26 | Channel clamping (the old UI allowed 0 and negatives), name URL-encoding (spaces, symbols, non-ASCII), truncation at 32 characters before the server can refuse it, the protocol version always being present, the `10.0.2.2` default, and the derived `serverHost`/`serverPort` pair never exposing which `ServerMode` produced it |
 | `data/ServerModeTest` | 5 | `ServerMode.restore`'s one compatibility duty: an install with a stored address and no stored mode is Custom, never Default, even if the address happens to equal the built-in one only by coincidence |
 | `data/ServerAddressTest` | 16 | `ServerAddress.parse` against everything people actually paste: a bare host, `host:port`, a whole URL with its own scheme and port, an IPv6 literal, credentials (rejected), whitespace from a clipboard, and a port outside the legal range |
@@ -35,10 +35,25 @@ actually running each command, not by arithmetic on the table.
 | `ui/PttUiStatusTest` | 13 | The state→presentation mapping the app screen, the bubble, the widget and the notification all share. Precedence (holding the floor outranks everything; a dead transport outranks stale floor bookkeeping), that only `READY` offers a press, and that the control stays **live** while we hold the floor — the regression behind known-issues #20 |
 | `audio/PcmGainTest` | 5 | The software volume desktop plays through: full gain hands back the very same array (so the default allocates nothing per frame), half gain halves every sample including negative ones, zero gain is silence rather than an untouched buffer, the ends of the 16-bit range survive, and an odd trailing byte is carried through. Little-endian byte order and sign extension are exactly the arithmetic that is wrong silently — a bug here is heard as distortion, not seen as a failure |
 | `audio/FrameAccumulatorTest` | 8 | The re-chunking desktop and iOS both use to turn a capture API's arbitrary-sized reads into exact `AudioConfig.FRAME_BYTES` frames: exact frames, short reads spread over several calls, an oversized chunk spanning more than one frame, a remainder carried across calls — all hardware-independent, so it runs in `commonTest` |
-| `network/KtorPttConnectionTest` | 1 | The OkHttp transport against a **real socket**, with the embedded relay as its peer: that the WebSocket `pingInterval` added for keepalive leaves the handshake alone (OkHttp runs that exchange below Ktor, so getting it wrong breaks every connection, not only a dying one), and that a `ping` written through `KtorPttConnection.send` comes back as a `pong` on the same event flow the controller watches |
-| `internalserver/InternalPttServerTest` | 6 | The on-device relay over a **real socket**: channel isolation, one-talker-at-a-time, audio without the floor rejected, invalid channel refused, and `ping` answered with `pong` — it is the third implementation of the server side, so the keepalive has to work against it too |
+| `network/KtorPttConnectionTest` | 2 | The OkHttp transport against a **real socket**, with the embedded relay as its peer: a keepalive probe goes end to end — welcome first (the WebSocket `pingInterval` added for keepalive leaves the handshake alone), then a `ping` written through `KtorPttConnection.send` comes back as a `pong` on the same event flow the controller watches; and with two real connections and a real `PttController` as sender, a receiver gets the controller's bip preamble bytes *before* the microphone audio frames that follow them |
+| `internalserver/InternalPttServerTest` | 7 | The on-device relay over a **real socket**: audio relayed inside a channel and not across channels, one talker at a time, audio without the floor rejected, invalid channel refused, `ping` answered with `pong`, `welcome` carrying the shared audio parameters, and every peer getting a byte-for-byte-correct copy of every frame with three or more listeners — it is the third implementation of the server side, so the keepalive and fan-out correctness have to work against it too |
 | `model/SettingsFormStateTest` | 55 | The settings form's validation and merge logic, reachable from `commonTest` for the first time now that it lives outside `SettingsScreen`: seeding from `AppSettings`, every `SettingsEdit` branch, the channel digit filter, `secure` following a pasted scheme versus falling back to the TLS switch, the `Tls` edit keeping a scheme-implied port, `addressProblem`/`customAddress` under Default vs Custom, every `*Error` boundary, `relayConflict`, and `toSettings()` carrying forward the fields the form does not edit |
 | `reducer/SettingsReducersTest` | 10 | `OpenSettings` seeding `settingsForm` from the repository, `CloseSettings` clearing it, `EditSettings` applying to the current form, `SaveSettings` persisting/closing/chaining to `Reconnect`/emitting `ShowMessage` on success and touching nothing when `hasError`, and `RequestOverlayPermission` emitting `MainEvent.RequestOverlayPermission` |
+
+### Voice history
+
+| Test class | Tests | What it pins down |
+|---|---|---|
+| `history/BackgroundRecordCaptureTest` | 10 | The capture state machine on virtual time: a backgrounded transmission becomes exactly one record bounded by the floor, a foreground one becomes none, and one that *started* in the foreground stays unrecorded even after the app backgrounds; the floor changing hands closes the old record and opens a new one; a record started in the background survives the app opening mid-message; a silent hold records nothing; a disconnect still saves the partial; the frame cap is two minutes of wire audio; and answering deletes every record that ended inside the 30 s window while older ones survive |
+| `history/WavTest` | 6 | The hand-rolled RIFF/PCM16LE codec: a payload round-trips byte for byte, the header describes the wire format it wraps (sample rate, channels, byte rate read back field by field), an empty payload is still a valid file — and anything that is not our canonical layout is refused: too short to hold a header, tampered magic, a non-canonical `fmt` chunk or float format, a foreign sample rate, a `data` size that lies (negative, past EOF, or shorter than the payload, which reads only the declared part) |
+| `history/HistoryPlaybackTest` | 5 | The replay pump: a record plays out frame by frame at exactly the wire rate (40 ms per frame on virtual time), stop falls silent on the next tick and clears the playing id, starting a second record cuts over from the first, a player that cannot be set up aborts the replay, and a record whose file is gone fails quietly |
+| `history/DataStoreHistoryStoreTest` | 8 | The store over a **real** preferences DataStore and temp-dir file storage (`jvmCommonTest`): a written record reads back identical with its audio, the index stays newest-first and stops at the retention cap (FIFO eviction takes the files with it), `deleteRecord` removes index entry and file together, `deleteEndedAfter` purges exactly the records that ended inside the answer window, the seen-mark only moves forward, a corrupt index reads as empty and the next write heals it, `pruneOrphans` sweeps files the index no longer names, and a failed file write stores nothing and reports the failure |
+| `reducer/HistoryReducersTest` | 9 | The five history reducers against stubs: `OpenHistory` switches screens and marks everything seen at the clock's value (a clock behind the last visit does not resurrect seen records), `CloseHistory` returns to Main leaving the playing record alone, `PlayRecord` looks the record up and starts the replay (and does nothing for an id that has vanished from the store), `StopRecordPlayback` silences a running replay (a no-op when nothing is playing), and `DeleteRecord` stops a playing record before deleting it |
+
+These run in `commonTest`/`jvmCommonTest` with fakes for the transport, the audio contracts and the
+history store; the Android-only wiring they stand in for — the started-Activity foreground count,
+the real `AudioTrack` at wire rate, the files under `<filesDir>/history/` — is exercised on
+emulators by [`voice-history-test-plan.md`](voice-history-test-plan.md).
 
 ### Transport security
 
@@ -67,6 +82,10 @@ a real relay" below), which is where the full 53 in the command at the top of th
 
 These cover the layer the JVM tests cannot reach: gesture lifecycle, semantics, and the wiring
 from a rendered control to a `MainAction`.
+
+Not covered here: `HistoryScreen` and the top-bar badge have no Compose test — the rules they
+display (badge derivation, play/stop/delete reachability) live in reducers the JVM tests cover, and
+the screen itself is exercised on devices by the two-emulator plan below.
 
 Testability came from two seams: `network/PttConnection` (so the transport can be faked) and
 `audio/AudioContracts.kt` (`VoiceRecorderContract`/`VoicePlayerContract`, since `AudioRecord` and
@@ -113,6 +132,10 @@ adb -s <serial> shell cat /sdcard/ui.xml | grep -oE 'text="[^"]*"'
 adb -s <serial> exec-out screencap -p > shot.png
 adb -s <serial> shell input swipe X Y X Y 5000     # press and hold
 ```
+
+The voice-history feature extends this procedure with its own backgrounded-capture cases and a
+regression pass over every step above: [`voice-history-test-plan.md`](voice-history-test-plan.md).
+It reuses these same preconditions and helpers.
 
 ## Pinned TLS against a real relay (opt-in)
 
@@ -185,5 +208,7 @@ unverified beyond "it frontend-compiles" until a real device or the macOS CI job
 
 ## Related
 
+- [`voice-history-test-plan.md`](voice-history-test-plan.md) — the two-emulator run sheet for the
+  history feature, plus the regression pass
 - [`platform-support.md`](platform-support.md) — what each platform has and does not have, and
   where each number in this document comes from

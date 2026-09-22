@@ -90,6 +90,11 @@ fun App() {
                         // out anyway here since this is the one call site Phase 7a added on purpose.
                     )
                 }
+
+                ScreenState.Screen.History -> HistoryScreen(
+                    state = state,
+                    onAction = viewModel::onAction,
+                )
             }
         }
     }

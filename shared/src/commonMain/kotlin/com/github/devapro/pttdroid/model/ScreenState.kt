@@ -1,6 +1,7 @@
 package com.github.devapro.pttdroid.model
 
 import com.github.devapro.pttdroid.domain.PttState
+import com.github.devapro.pttdroid.history.VoiceRecord
 
 /**
  * What the UI renders. Derived from [PttState] rather than owning connection state itself, so
@@ -22,6 +23,10 @@ data class ScreenState(
     val canDrawOverlay: Boolean = true,
     /** Non-null exactly while [screen] is [Screen.Settings]. See [SettingsFormState]. */
     val settingsForm: SettingsFormState? = null,
+    /** Received-while-backgrounded records, newest first. Mirrored from the history store. */
+    val history: List<VoiceRecord> = emptyList(),
+    /** Whether any [history] record arrived after the last time the history screen was opened. */
+    val historyUnread: Boolean = false,
 ) {
-    enum class Screen { Main, Settings }
+    enum class Screen { Main, Settings, History }
 }

@@ -16,6 +16,7 @@ import com.github.devapro.pttdroid.di.sharedDesktopModule
 import com.github.devapro.pttdroid.di.sharedModule
 import com.github.devapro.pttdroid.model.MainEvent
 import com.github.devapro.pttdroid.model.ScreenState
+import com.github.devapro.pttdroid.ui.HistoryScreen
 import com.github.devapro.pttdroid.ui.MainScreen
 import com.github.devapro.pttdroid.ui.SettingsScreen
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
@@ -103,6 +104,14 @@ fun main() {
                                 onAction = viewModel::onAction,
                             )
                         }
+
+                        // Reachable on desktop (the icon is on the shared MainScreen), though the
+                        // list stays empty there by decision: capture is inert while always
+                        // foreground — see `ForegroundProvider` in di/SharedDiDesktop.kt.
+                        ScreenState.Screen.History -> HistoryScreen(
+                            state = state,
+                            onAction = viewModel::onAction,
+                        )
                     }
                 }
             }
