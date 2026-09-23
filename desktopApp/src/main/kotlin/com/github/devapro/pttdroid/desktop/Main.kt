@@ -2,6 +2,7 @@ package com.github.devapro.pttdroid.desktop
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -9,21 +10,23 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import cafe.adriel.voyager.navigator.Navigator
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.SettingsRepository
 import com.github.devapro.pttdroid.data.settings.applyLanguagePreference
 import com.github.devapro.pttdroid.di.sharedDesktopModule
 import com.github.devapro.pttdroid.di.sharedModule
-import com.github.devapro.pttdroid.model.MainEvent
-import com.github.devapro.pttdroid.model.ScreenState
-import com.github.devapro.pttdroid.ui.HistoryScreen
-import com.github.devapro.pttdroid.ui.MainScreen
-import com.github.devapro.pttdroid.ui.SettingsScreen
+import com.github.devapro.pttdroid.features.api.main.MainScreen
+import com.github.devapro.pttdroid.features.history.registerHistoryScreenDi
+import com.github.devapro.pttdroid.features.main.MainViewModel
+import com.github.devapro.pttdroid.features.main.registerMainScreenDi
+import com.github.devapro.pttdroid.features.settings.registerSettingsScreenDi
+import com.github.devapro.pttdroid.ui.LocalPttUiEffects
 import com.github.devapro.pttdroid.ui.theme.PTTdroidTheme
-import com.github.devapro.pttdroid.viewmodel.MainActivityViewModel
-import org.jetbrains.compose.resources.getString
+import com.github.devapro.pttdroid.uishell.rememberPttHostUiEffects
 import org.koin.compose.koinInject
 import org.koin.core.context.startKoin
+import org.koin.dsl.module
 
 /**
  * The real shared UI, running on the JVM/desktop target.
@@ -41,39 +44,43 @@ import org.koin.core.context.startKoin
  */
 fun main() {
     startKoin {
-        modules(sharedModule, sharedDesktopModule)
+        modules(
+            sharedModule,
+            sharedDesktopModule,
+            // The feature DI bindings behind the Voyager destinations — each register*ScreenDi()
+            // owns its feature's whole MVI stack (view model as a process `single`, processor,
+            // reducers) plus its ScreenFactory. From here on the hosts only need these to start
+            // the graph; nothing here resolves screens or threads their arguments any more.
+            module {
+                registerMainScreenDi()
+                registerSettingsScreenDi()
+                registerHistoryScreenDi()
+            },
+        )
     }
 
     application {
         Window(onCloseRequest = ::exitApplication, title = "PTTdroid") {
-            // Not `koinViewModel()`: that resolves through `LocalViewModelStoreOwner`, which ties
-            // the instance to a screen/navigation lifecycle Compose Multiplatform Desktop does
-            // not have a documented default for in a bare `Window`. `viewModelOf` in
-            // `di/SharedDi.kt` registers this as a plain Koin factory, so `koinInject` (created
-            // once, then `remember`-ed for the composition's lifetime, same as every other
-            // dependency below) resolves it exactly as well — there is no configuration change or
-            // back-stack to survive on desktop that would need the extra machinery.
-            val viewModel = koinInject<MainActivityViewModel>()
+            // Not `koinViewModel()` — desktop has no `ViewModelStoreOwner` for a bare `Window`
+            // to bind one to, and since the Voyager step it would not even be the right tool:
+            // the feature DI modules register the view models as Koin `single`s, so *any*
+            // resolution site (this one, above `key(language)`, or a screen root below it)
+            // provably gets the same instance. Resolving here rather than letting the root
+            // `Navigator` sit under a recreated VM on a language change is still deliberate —
+            // the view models front the session, and `key(language)` must not rebuild them.
+            val mainViewModel = koinInject<MainViewModel>()
             val settingsRepository = koinInject<SettingsRepository>()
 
-            val state by viewModel.state.collectAsState()
             val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
             val snackbarHostState = remember { SnackbarHostState() }
+            val effects = rememberPttHostUiEffects(snackbarHostState)
 
             // The Android app does this from MainActivity.onStart(), gated on a runtime
-            // permission result; desktop has no such permission, so it happens once, up front.
-            LaunchedEffect(Unit) { viewModel.onMicPermissionResult(granted = true) }
-
-            // Mirrors MainActivity.collectEvents(): only ShowMessage has a desktop equivalent —
-            // there is no runtime mic permission or "draw over other apps" prompt to route the
-            // other two events to.
-            LaunchedEffect(Unit) {
-                viewModel.event.collect { event ->
-                    if (event is MainEvent.ShowMessage) {
-                        snackbarHostState.showSnackbar(getString(event.messageRes))
-                    }
-                }
-            }
+            // permission result; desktop has no such permission, so it happens once, up front —
+            // and since a grant in onMicPermissionResult dispatches InitConnection itself, this
+            // is what starts the session (through DesktopPttSessionLauncher straight into
+            // PttController.start()).
+            LaunchedEffect(Unit) { mainViewModel.onMicPermissionResult(granted = true) }
 
             val language = settings.languageMode
             // Applied during composition, not from a LaunchedEffect: an effect runs *after* the
@@ -81,37 +88,15 @@ fun main() {
             remember(language) { applyLanguagePreference(language) }
             key(language) {
                 PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
-                    when (state.screen) {
-                        ScreenState.Screen.Main -> MainScreen(
-                            state = state,
-                            endpoint = "${settings.serverHost}:${settings.serverPort}",
-                            snackbarHostState = snackbarHostState,
-                            onAction = viewModel::onAction,
-                            // canRouteAudioOutput defaults to desktop's own `false`, so the
-                            // speaker/earpiece keys are dropped and only the volume slider shows.
-                            audioOutput = settings.audioOutput,
-                            playbackVolume = settings.playbackVolume,
-                        )
-
-                        ScreenState.Screen.Settings -> state.settingsForm?.let { form ->
-                            SettingsScreen(
-                                form = form,
-                                // No overlay/"draw over other apps" concept on desktop; nothing
-                                // here ever calls onOverlayPermissionResult, so
-                                // ScreenState.canDrawOverlay just keeps its own default of true and
-                                // the floating-bubble toggle's warning never shows.
-                                canDrawOverlay = state.canDrawOverlay,
-                                onAction = viewModel::onAction,
-                            )
-                        }
-
-                        // Reachable on desktop (the icon is on the shared MainScreen), though the
-                        // list stays empty there by decision: capture is inert while always
-                        // foreground — see `ForegroundProvider` in di/SharedDiDesktop.kt.
-                        ScreenState.Screen.History -> HistoryScreen(
-                            state = state,
-                            onAction = viewModel::onAction,
-                        )
+                    // Voyager Navigator, same as the other two hosts. History stays reachable
+                    // (its icon is on the shared MainScreen) though its list stays empty on
+                    // desktop by decision: capture is inert while always foreground — see
+                    // `ForegroundProvider` in di/SharedDiDesktop.kt. Desktop has no system back
+                    // (Voyager's BackHandler actual is a no-op on JVM), so the in-screen arrows
+                    // remain the only route out of Settings/History here — behaviour identical to
+                    // the pre-Voyager router on this platform.
+                    CompositionLocalProvider(LocalPttUiEffects provides effects) {
+                        Navigator(MainScreen)
                     }
                 }
             }

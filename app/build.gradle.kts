@@ -159,6 +159,17 @@ dependencies {
     // network) — see docs/architecture.md. PTTdroidApplication.onCreate() loads its Koin modules
     // alongside :app's own.
     implementation(project(":shared"))
+    // :ui-shell is the root host: MainActivity renders its Voyager Navigator scaffolding, and
+    // its api(projects.features.*) edges put the three register*ScreenDi() functions on this
+    // module's classpath for PTTdroidApplication's startKoin (Phase 2 of the module-graph
+    // refactor).
+    implementation(project(":ui-shell"))
+    // The MVI base (`mvi/`) moved to :core in step 5 of the module-graph refactor. :app names the
+    // feature ViewModels (by inject()), and their MviViewModel supertype must be on this
+    // module's compile classpath to resolve their members (`onAction`) — :core is
+    // `implementation` along the feature edges, so the edge has to be declared here (same as
+    // the :shared one above).
+    implementation(project(":core"))
     // Res.string.*/Res.plurals.* (generated in :shared) resolve to StringResource/
     // PluralStringResource; the accessor functions themselves (stringResource, getString,
     // pluralStringResource, getPluralString) live in this artifact, which :shared depends on

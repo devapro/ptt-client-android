@@ -1,7 +1,9 @@
 # Platform support
 
-Three platforms ship from this repository, from three different degrees of a single `:shared`
-Compose Multiplatform module. This is the honest state of each, not the aspiration.
+Three platforms ship from this repository, from three different degrees of the same Kotlin
+Multiplatform module set — since Phase 2 the UI lives in `:features:*` screens composed by the
+`:ui-shell` root host on top of the `:shared` domain/state layer. This is the honest state of each,
+not the aspiration.
 
 | | Android (`:app`) | Desktop (`:desktopApp`) | iOS (`iosApp/`) |
 |---|---|---|---|
@@ -19,10 +21,10 @@ Compose Multiplatform module. This is the honest state of each, not the aspirati
 | Home-screen widget | Yes — `widget/PttWidget` (Glance), toggle-only (RemoteViews cannot express hold) | No | No — an equivalent would need a separate WidgetKit extension target (its own process, no direct calls into the running app) and could not do hold-to-talk either, for the same discrete-tap reason |
 | Notification with a transmit action | Yes — `service/PttNotifications` | No — no notification concept wired up | No — iOS cannot open the microphone from a background notification handler |
 | Voice history of transmissions missed while backgrounded | Yes — capture, badge, playback and storage (`history/`, `<filesDir>/history/` + a DataStore index) | Screen and playback work; **capture is inert by decision** — desktop has no background concept, so `ForegroundProvider` is bound to `true` and nothing is ever recorded | Screen and playback work; **capture is inert** for the same reason; the iOS file-storage binding is frontend-compiled only, like the rest of `iosMain` |
-| Unit tests | `:shared:testDebugUnitTest` (286) | `:shared:desktopTest` (286, same source) | Frontend-compiled only — Kotlin/Native tests need a Mac to execute |
-| UI tests | `:shared:connectedDebugAndroidTest` (47: 44 pass, 3 skip without a live relay) | None | None |
+| Unit tests | `testDebugUnitTest` (311, across `:shared`, `:features-api:settings` and the three `:features:*`) | `desktopTest` (311, same sources, every module in one invocation) | Frontend-compiled only — Kotlin/Native tests need a Mac to execute |
+| UI tests | `:core` + `:features:main` + `:features:settings` `connectedDebugAndroidTest` (47, all pass); `:shared`'s instrumented suite adds 3 settings-migration + 3 opt-in TLS tests (53 total, the 3 TLS ones skip without a live relay) | None | None |
 | CI coverage | `ci.yml`, `ubuntu-latest` | `ci.yml`, `ubuntu-latest` | `ios.yml`, `macos-latest` — the only place that actually links/runs iOS code; `ci.yml` only frontend-compiles it (see below) |
-| Packaging | Signed APK + F-Droid repo (`release.yml`) | `.deb`/`.msi`/`.exe`/`.dmg` via `desktop.yml`, one runner per OS — jpackage cannot cross-compile, and a wrong-host task is silently `SKIPPED`. Unsigned and un-notarised; attached to the GitHub release on a tag | Xcode archive, not automated here |
+| Packaging | Signed APK attached to the GitHub release (`release.yml`); distribution to F-Droid goes through the official catalogue, which builds from source (submission in review) | `.deb`/`.msi`/`.exe`/`.dmg` via `desktop.yml`, one runner per OS — jpackage cannot cross-compile, and a wrong-host task is silently `SKIPPED`. Unsigned and un-notarised; attached to the GitHub release on a tag | Xcode archive, not automated here |
 
 ## Why iOS is verified less than the other two
 
@@ -31,8 +33,8 @@ on a real Apple toolchain. This repository's regular development machine (and `c
 which can frontend-compile iOS Kotlin (catching type errors, bad `expect`/`actual` pairs, and most
 cinterop mistakes) but cannot produce or execute a real binary. `.github/workflows/ios.yml`
 (`macos-latest`) is the only place iOS code is actually linked and its Xcode project actually
-built — treat anything under `shared/src/iosMain`/`iosApp/` as compile-verified but link/runtime-
-verified only when that job is green.
+built — treat anything under `shared/src/iosMain`, `ui-shell/src/iosMain` or `iosApp/` as
+compile-verified but link/runtime-verified only when that job is green.
 
 ## Where each gap is explained in depth
 

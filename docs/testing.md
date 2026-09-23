@@ -4,22 +4,31 @@
 
 | Source set | Purpose |
 |---|---|
-| `shared/src/commonTest/`, `shared/src/jvmCommonTest/` | JVM unit tests — no device required. Moved here from `app/src/test/` in the Phase 5 Compose Multiplatform migration; run on **both** the `androidTarget` and `desktop` compilations | 
-| `shared/src/androidInstrumentedTest/` | Compose UI tests, plus the TLS and settings-migration integration tests — needs a running device or emulator. Moved here from `app/src/androidTest/` in Phase 5, since the composables and the settings/network code they exercise now live in `:shared` |
+| `shared/src/commonTest/`, `shared/src/jvmCommonTest/` | JVM unit tests in `:shared` (215 cases) — no device required. Moved here from `app/src/test/` in the Phase 5 Compose Multiplatform migration; run on **both** the `androidTarget` and `desktop` compilations |
+| `features-api/settings/src/commonTest/` | `SettingsFormStateTest` (55) — lives next to the pure type under test |
+| `features/main/src/commonTest/`, `features/settings/src/commonTest/`, `features/history/src/commonTest/` | Each feature's reducer tests, living with the reducers they cover: `MainReducersTest` (14), `SettingsReducersTest` (10), `HistoryReducersTest` (9), plus `SettingsExitObserverTest` (8) in `:features:settings` — the Settings screen's exit rule, which is a screen-root behaviour rather than a reducer's |
+| `core/src/androidInstrumentedTest/` | `PTTButtonTest` — moved here with the `:core` widget it tests in step 5 of the module-graph refactor (before that it lived in `shared/src/androidInstrumentedTest/`). Needs a running device or emulator |
+| `shared/src/androidInstrumentedTest/` | The TLS and settings-migration integration tests — needs a running device or emulator. Moved here from `app/src/androidTest/` in Phase 5; the network and settings code they exercise still lives in `:shared` |
+| `features/main/src/androidInstrumentedTest/`, `features/settings/src/androidInstrumentedTest/` | `MainScreenTest` and `SettingsScreenTest` — moved with their screens into the feature modules in Phase 2 |
 
 ```bash
-./gradlew :shared:testDebugUnitTest :shared:desktopTest   # 286 tests, on both targets — verified, 0 failures
+./gradlew testDebugUnitTest        # 303 JVM unit tests across five modules, on the androidTarget compilation — verified, 0 failures
+./gradlew desktopTest              # the same 311 again, on the desktop compilation — unqualified, so :core/:ui-shell/:features-api:* no-op alongside the five that have tests
 ./gradlew :app:testDebugUnitTest     # 0 — nothing left in :app after Phase 5
 ./gradlew lintDebug :shared:lintDebug              # :app 21 pre-existing findings, :shared 0
-ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 53 tests: 47 UI + 3 migration + 3 TLS (skipped without -Pandroid.testInstrumentationRunnerArguments.relayHost=...); ANDROID_SERIAL picks the device
+ANDROID_SERIAL=<serial> ./gradlew :core:connectedDebugAndroidTest :shared:connectedDebugAndroidTest :features:main:connectedDebugAndroidTest :features:settings:connectedDebugAndroidTest   # 53 tests across the four modules: 47 UI (7 :core + 15 :features:main + 25 :features:settings) + 3 migration + 3 TLS (skipped without -Pandroid.testInstrumentationRunnerArguments.relayHost=...); ANDROID_SERIAL picks the device
 ```
 
-The counts and test-class breakdown below are re-verified as of the voice-history feature
-(`:shared:testDebugUnitTest` and `:shared:desktopTest` each produce 286 tests
-with 0 failures; `:shared:connectedDebugAndroidTest` produces 53 with 50 passing and 3 skipped) by
-actually running each command, not by arithmetic on the table.
+The counts and test-class breakdown below are re-verified as of the legacy-layer deletion by
+actually running each command, not by arithmetic on the table
+(`testDebugUnitTest` and `desktopTest` each produce 311 tests — 215 `:shared`,
+55 `:features-api:settings`, 14 `:features:main`, 18 `:features:settings`, 9 `:features:history` —
+with 0 failures; `:core` has no unit tests, its only suite being the moved instrumented
+`PTTButtonTest`;
+the four `connectedDebugAndroidTest` tasks above produce 7 + 6 + 15 + 25 = 53 with 50 passing and
+3 skipped).
 
-## Unit tests (286, all passing, on both `androidTarget` and `desktop`)
+## Unit tests (311, all passing, on both `androidTarget` and `desktop`)
 
 | Test class | Tests | What it pins down |
 |---|---|---|
@@ -37,8 +46,10 @@ actually running each command, not by arithmetic on the table.
 | `audio/FrameAccumulatorTest` | 8 | The re-chunking desktop and iOS both use to turn a capture API's arbitrary-sized reads into exact `AudioConfig.FRAME_BYTES` frames: exact frames, short reads spread over several calls, an oversized chunk spanning more than one frame, a remainder carried across calls — all hardware-independent, so it runs in `commonTest` |
 | `network/KtorPttConnectionTest` | 2 | The OkHttp transport against a **real socket**, with the embedded relay as its peer: a keepalive probe goes end to end — welcome first (the WebSocket `pingInterval` added for keepalive leaves the handshake alone), then a `ping` written through `KtorPttConnection.send` comes back as a `pong` on the same event flow the controller watches; and with two real connections and a real `PttController` as sender, a receiver gets the controller's bip preamble bytes *before* the microphone audio frames that follow them |
 | `internalserver/InternalPttServerTest` | 7 | The on-device relay over a **real socket**: audio relayed inside a channel and not across channels, one talker at a time, audio without the floor rejected, invalid channel refused, `ping` answered with `pong`, `welcome` carrying the shared audio parameters, and every peer getting a byte-for-byte-correct copy of every frame with three or more listeners — it is the third implementation of the server side, so the keepalive and fan-out correctness have to work against it too |
-| `model/SettingsFormStateTest` | 55 | The settings form's validation and merge logic, reachable from `commonTest` for the first time now that it lives outside `SettingsScreen`: seeding from `AppSettings`, every `SettingsEdit` branch, the channel digit filter, `secure` following a pasted scheme versus falling back to the TLS switch, the `Tls` edit keeping a scheme-implied port, `addressProblem`/`customAddress` under Default vs Custom, every `*Error` boundary, `relayConflict`, and `toSettings()` carrying forward the fields the form does not edit |
-| `reducer/SettingsReducersTest` | 10 | `OpenSettings` seeding `settingsForm` from the repository, `CloseSettings` clearing it, `EditSettings` applying to the current form, `SaveSettings` persisting/closing/chaining to `Reconnect`/emitting `ShowMessage` on success and touching nothing when `hasError`, and `RequestOverlayPermission` emitting `MainEvent.RequestOverlayPermission` |
+| `features/api/settings/SettingsFormStateTest` (`:features-api:settings`) | 55 | The settings form's validation and merge logic, reachable from `commonTest` for the first time now that it lives outside `SettingsScreen`: seeding from `AppSettings`, every `SettingsEdit` branch, the channel digit filter, `secure` following a pasted scheme versus falling back to the TLS switch, the `Tls` edit keeping a scheme-implied port, `addressProblem`/`customAddress` under Default vs Custom, every `*Error` boundary, `relayConflict`, and `toSettings()` carrying forward the fields the form does not edit |
+| `features/settings/reducer/SettingsReducersTest` (`:features:settings`) | 10 | `Open` seeding the form from the repository, `Close` clearing it, `EditSettings` applying to the current form, `SaveSettings` persisting/closing/chaining to `Reconnect`/emitting `ShowMessage` on success and touching nothing when `hasError`, and `RequestOverlayPermission` emitting `UiEvent.RequestOverlayPermission` |
+| `features/settings/SettingsExitObserverTest` (`:features:settings`) | 8 | The Settings screen root's exit rule (`SettingsExitObserver`), driven through the real view model, processor, reducers and repository: only a seeded → null **transition** pops (the null frames before `Open`'s disk read lands must not bounce out, and a `form == null` level would), a **rejected** save (known-issues #25's `hasError` guard) keeps the user in Settings with their edit, the arrow's `Close` and the edge it triggers produce exactly **one** pop, an unrelated `SettingsState` write while the form is seeded is not an exit, and a successful save still gets its `settings_saved` message out after the pop. `ReconnectReducer` is stood in for — see the class KDoc; that the seed `LaunchedEffect` runs once per entry is composition keying and needs a device |
+| `features/main/reducer/MainReducersTest` (`:features:main`) | 14 | Main's nine reducers: `InitConnection`/`Speak` refusing to touch the launcher or controller without the mic grant (the "pressing PTT must never open the microphone" invariant, at the reducer level), `Speak` requesting the floor without opening the mic and a second press not re-requesting, `Disconnect` stopping the launcher, `SetChannel` persisting + reconnecting, clamping and skipping a channel the session already has, `DismissError` reaching the controller, `StopSpeak` releasing the floor, the audio-output and volume pairs separating apply-from-persist (a drag is many `SetPlaybackVolume`s and exactly one `SavePlaybackVolume` write) |
 
 ### Voice history
 
@@ -48,7 +59,8 @@ actually running each command, not by arithmetic on the table.
 | `history/WavTest` | 6 | The hand-rolled RIFF/PCM16LE codec: a payload round-trips byte for byte, the header describes the wire format it wraps (sample rate, channels, byte rate read back field by field), an empty payload is still a valid file — and anything that is not our canonical layout is refused: too short to hold a header, tampered magic, a non-canonical `fmt` chunk or float format, a foreign sample rate, a `data` size that lies (negative, past EOF, or shorter than the payload, which reads only the declared part) |
 | `history/HistoryPlaybackTest` | 5 | The replay pump: a record plays out frame by frame at exactly the wire rate (40 ms per frame on virtual time), stop falls silent on the next tick and clears the playing id, starting a second record cuts over from the first, a player that cannot be set up aborts the replay, and a record whose file is gone fails quietly |
 | `history/DataStoreHistoryStoreTest` | 8 | The store over a **real** preferences DataStore and temp-dir file storage (`jvmCommonTest`): a written record reads back identical with its audio, the index stays newest-first and stops at the retention cap (FIFO eviction takes the files with it), `deleteRecord` removes index entry and file together, `deleteEndedAfter` purges exactly the records that ended inside the answer window, the seen-mark only moves forward, a corrupt index reads as empty and the next write heals it, `pruneOrphans` sweeps files the index no longer names, and a failed file write stores nothing and reports the failure |
-| `reducer/HistoryReducersTest` | 9 | The five history reducers against stubs: `OpenHistory` switches screens and marks everything seen at the clock's value (a clock behind the last visit does not resurrect seen records), `CloseHistory` returns to Main leaving the playing record alone, `PlayRecord` looks the record up and starts the replay (and does nothing for an id that has vanished from the store), `StopRecordPlayback` silences a running replay (a no-op when nothing is playing), and `DeleteRecord` stops a playing record before deleting it |
+| `history/HistoryBadgeTest` | 3 | The badge's unread derivation — a record is unread when it ended after `lastViewedAt`, `markSeen` clears it, and a record that ended before the last viewing never lights the badge |
+| `features/history/reducer/HistoryReducersTest` (`:features:history`) | 9 | The five history reducers against stubs: `Open` marks everything seen at the clock's value (a clock behind the last visit does not resurrect seen records), `Close` changes nothing and leaves the playing record alone, `PlayRecord` looks the record up and starts the replay (and does nothing for an id that has vanished from the store), `StopRecordPlayback` silences a running replay (a no-op when nothing is playing), and `DeleteRecord` stops a playing record before deleting it |
 
 These run in `commonTest`/`jvmCommonTest` with fakes for the transport, the audio contracts and the
 history store; the Android-only wiring they stand in for — the started-Activity foreground count,
@@ -68,17 +80,22 @@ emulators by [`voice-history-test-plan.md`](voice-history-test-plan.md).
 
 ## Compose UI tests (47, all passing)
 
-Run on a device: `ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest`. Verified on
-both a 1080x2400 phone (API 35, portrait branch) and a 2560x1600 tablet (API 34, landscape branch).
-The same instrumented source set also carries `data/settings/SettingsDataStoreMigrationTest` (3
+Run on a device: `ANDROID_SERIAL=<serial> ./gradlew :core:connectedDebugAndroidTest :shared:connectedDebugAndroidTest :features:main:connectedDebugAndroidTest :features:settings:connectedDebugAndroidTest`
+— since Phase 2 the screen tests live with their screens, and since step 5 of the module-graph
+refactor `PTTButtonTest` lives in `:core` with the widget it tests, so the 47 split 7 in `:core`
+(`PTTButtonTest`), 15 in `:features:main` (`MainScreenTest`) and 25 in `:features:settings`
+(`SettingsScreenTest`). Verified on both a 1080x2400 phone (API 35, portrait branch) and a
+2560x1600 tablet (API 34, landscape branch).
+The `:shared` instrumented source set also carries `data/settings/SettingsDataStoreMigrationTest` (3
 tests, always runs) and `network/TlsRelayIntegrationTest` (3 tests, opt-in — see "Pinned TLS against
-a real relay" below), which is where the full 53 in the command at the top of this page comes from.
+a real relay" below), which is where the full 53 across the four modules in the command at the top
+of this page comes from.
 
-| Test class | Tests | What it pins down |
-|---|---|---|
-| `ui/PTTButtonTest` | 7 | The gesture. The microphone request leaves on touch-**down**, not on release; **the release still fires when the button is disabled mid-press** and when the status changes mid-press (known-issues #20 — losing that release strands the talk floor with the microphone open); a dead control ignores touches and offers no click action; the face carries a word, not just a colour; TalkBack gets a toggle action |
-| `ui/MainScreenTest` | 15 | What the screen says and what it dispatches: ready/offline/receiving/pending wording, the offline card showing the address it cannot reach, the missing-permission case offering the fix, channel stepping and its disabled ends, the channel locked while transmitting, error dismissal, connect/disconnect, and the gear. Plus the audio-out pill: the live route named in words rather than only coloured, the earpiece key dispatching `SetAudioOutput` with the live one reading as selected, and a platform with one output device (`canRouteAudioOutput = false`) getting the slider and no route keys |
-| `ui/SettingsScreenTest` | 25 | The form's two jobs: making a broken relay address impossible to save, and showing the URL it will actually dial. Default hides the address rather than pre-filling a field; choosing Custom reveals it and switching back keeps what was typed; a blank address, an out-of-range port and credentials in the URL each block Save with their own message; a pasted `https://` tunnel URL brings 443 with it and turns encryption on, and turning encryption back off keeps that port instead of silently dropping to 80. Plus the security fields: the fingerprint box appears only with encryption on, a half-typed fingerprint cannot be saved, an empty one can (a tunnel needs no pin), the token is masked and saved trimmed, and hosting a relay while asking for encryption is called out. Plus the appearance/language selectors: theme and language can each be forced independently of the system, and the stored value of each comes back as the selected segment |
+| Test class | Module | Tests | What it pins down |
+|---|---|---|---|
+| `ui/PTTButtonTest` | `:core` | 7 | The gesture. The microphone request leaves on touch-**down**, not on release; **the release still fires when the button is disabled mid-press** and when the status changes mid-press (known-issues #20 — losing that release strands the talk floor with the microphone open); a dead control ignores touches and offers no click action; the face carries a word, not just a colour; TalkBack gets a toggle action |
+| `ui/MainScreenTest` | `:features:main` | 15 | What the screen says and what it dispatches: ready/offline/receiving/pending wording, the offline card showing the address it cannot reach, the missing-permission case offering the fix, channel stepping and its disabled ends, the channel locked while transmitting, error dismissal, connect/disconnect, and the gear. Plus the audio-out pill: the live route named in words rather than only coloured, the earpiece key dispatching `SetAudioOutput` with the live one reading as selected, and a platform with one output device (`canRouteAudioOutput = false`) getting the slider and no route keys |
+| `ui/SettingsScreenTest` | `:features:settings` | 25 | The form's two jobs: making a broken relay address impossible to save, and showing the URL it will actually dial. Default hides the address rather than pre-filling a field; choosing Custom reveals it and switching back keeps what was typed; a blank address, an out-of-range port and credentials in the URL each block Save with their own message; a pasted `https://` tunnel URL brings 443 with it and turns encryption on, and turning encryption back off keeps that port instead of silently dropping to 80. Plus the security fields: the fingerprint box appears only with encryption on, a half-typed fingerprint cannot be saved, an empty one can (a tunnel needs no pin), the token is masked and saved trimmed, and hosting a relay while asking for encryption is called out. Plus the appearance/language selectors: theme and language can each be forced independently of the system, and the stored value of each comes back as the selected segment |
 
 These cover the layer the JVM tests cannot reach: gesture lifecycle, semantics, and the wiring
 from a rendered control to a `MainAction`.
@@ -180,9 +197,10 @@ no `.p12`.
 
 ## iOS
 
-`shared/src/iosMain` has no unit tests of its own — Kotlin/Native tests for `iosArm64`/
-`iosSimulatorArm64` need a real Apple toolchain to *execute* (this repository's regular machine and
-`ci.yml` are Linux, which can only frontend-compile iOS Kotlin — see `docs/platform-support.md`).
+`shared/src/iosMain` and `ui-shell/src/iosMain` have no unit tests of their own — Kotlin/Native
+tests for `iosArm64`/`iosSimulatorArm64` need a real Apple toolchain to *execute* (this repository's
+regular machine and `ci.yml` are Linux, which can only frontend-compile iOS Kotlin — see
+`docs/platform-support.md`).
 `.github/workflows/ios.yml` (`macos-latest`) is the only place iOS code actually links and runs,
 and even there the check is "does the framework link and does `iosApp.xcodeproj` build", not a test
 suite. Everything `commonTest`/`jvmCommonTest` already covers (the domain layer, the reducers, the
@@ -199,9 +217,9 @@ unverified beyond "it frontend-compiles" until a real device or the macOS CI job
 - The TLS integration test is opt-in and not part of the default gate, because it needs a relay
   it cannot start itself.
 - No automated tests at all for `:desktopApp`'s or iOS's own thin entry points (`Main.kt`,
-  `MainViewController.kt`) — everything they wire together is covered by `:shared`'s tests, but the
-  wiring itself is smoke-tested by hand (`:desktopApp:packageDeb` + running the result;
-  `ios.yml`'s Xcode build).
+  `:ui-shell`'s `MainViewController.kt`) — everything they wire together is covered by `:shared`'s
+  and the feature modules' tests, but the wiring itself is smoke-tested by hand
+  (`:desktopApp:packageDeb` + running the result; `ios.yml`'s Xcode build).
 - `deploy/deploy.sh` in the server repo has its preflight and failure paths exercised, and a
   `--dry-run` mode, but the remote half is not covered by an automated test — it needs a second
   host.

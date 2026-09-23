@@ -8,12 +8,16 @@ import com.github.devapro.pttdroid.data.settings.applyLocale
 import com.github.devapro.pttdroid.di.appModule
 import com.github.devapro.pttdroid.di.sharedAndroidModule
 import com.github.devapro.pttdroid.di.sharedModule
+import com.github.devapro.pttdroid.features.history.registerHistoryScreenDi
+import com.github.devapro.pttdroid.features.main.registerMainScreenDi
+import com.github.devapro.pttdroid.features.settings.registerSettingsScreenDi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
+import org.koin.dsl.module
 import timber.log.Timber
 
 class PTTdroidApplication : Application() {
@@ -37,10 +41,22 @@ class PTTdroidApplication : Application() {
         startKoin {
             androidContext(this@PTTdroidApplication)
             // sharedModule (platform-independent) + sharedAndroidModule (Android's platform
-            // providers, from :shared) + appModule (:app's own Android-only classes). Koin merges
-            // all three into one graph, so it does not matter which module registers a binding
-            // another module's definitions depend on.
-            modules(sharedModule, sharedAndroidModule, appModule)
+            // providers, from :shared) + appModule (:app's own Android-only classes) + the three
+            // feature screen modules' bindings (Phase 2 — the ScreenFactory contracts and
+            // view-model singles the screen roots resolve; visible here through :ui-shell's api
+            // edges).
+            // Koin merges every one of them into one graph, so it does not matter which module
+            // registers a binding another module's definitions depend on.
+            modules(
+                sharedModule,
+                sharedAndroidModule,
+                appModule,
+                module {
+                    registerMainScreenDi()
+                    registerSettingsScreenDi()
+                    registerHistoryScreenDi()
+                },
+            )
         }
 
         // Applies the stored language process-wide (Locale.setDefault, inside applyLocale) so the

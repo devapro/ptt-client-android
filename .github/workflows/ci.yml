@@ -29,15 +29,21 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # :shared's unit tests (136), on the androidTarget compilation. :app has none of its own
-      # left after the Compose Multiplatform migration — everything testable moved to :shared.
+      # The KMP modules' unit tests (303 across :shared, :features-api:settings and the three
+      # :features:*), on the androidTarget compilation. :app has none of its own — everything
+      # testable moved out of it during the Compose Multiplatform migration.
       - name: Unit tests (Android target)
         run: ./gradlew testDebugUnitTest
 
-      # The same 136 tests again, on the desktop (JVM) compilation — this is a distinct compile
-      # and a distinct test run, not a cache hit off the line above.
+      # The same sources again on the desktop (JVM) compilation — a distinct compile and a distinct
+      # test run, not a cache hit off the line above. Unqualified on purpose: it runs the task in
+      # every KMP module (:shared 215, :features-api:settings 55, :features:main 14,
+      # :features:settings 10, :features:history 9, and no-ops in :core/:ui-shell/the api modules
+      # that have no tests), which is what docs/testing.md's gate says. Naming only
+      # ':shared:desktopTest' here silently dropped 29% of the suite — the whole settings-validation
+      # surface — from CI while CLAUDE.md and docs/testing.md claimed all five ran.
       - name: Unit tests (desktop target)
-        run: ./gradlew :shared:desktopTest
+        run: ./gradlew desktopTest
 
       - name: Lint
         run: ./gradlew lintDebug
@@ -48,21 +54,27 @@ jobs:
       - name: Assemble desktop app
         run: ./gradlew :desktopApp:packageDeb
 
-      # Cheap Linux-side iOS signal: frontend-compiles (klib, not link) shared/src/iosMain for both
-      # iOS targets. Cannot catch a link-time or runtime failure — that needs ios.yml's macOS
+      # Cheap Linux-side iOS signal: frontend-compiles (klib, not link) every iosMain in the graph
+      # for both iOS targets — :ui-shell's compilations pull :shared's, :core's and the
+      # features/features-api ones as dependency tasks, so this covers them all in one invocation
+      # (since Phase 2 of the module-graph refactor, :ui-shell is where MainViewController.kt and
+      # KoinIos.kt live). Cannot catch a link-time or runtime failure — that needs ios.yml's macOS
       # runner — but it catches a bad expect/actual pair or cinterop signature error in well under
       # a minute, without paying for a macOS runner on every push. See docs/platform-support.md.
-      - name: Frontend-compile :shared for iOS
-        run: ./gradlew -PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64 :shared:compileKotlinIosArm64
+      - name: Frontend-compile :ui-shell (and transitively every iOS target) for iOS
+        run: ./gradlew -PenableIosTargets=true :ui-shell:compileKotlinIosSimulatorArm64 :ui-shell:compileKotlinIosArm64
 
+      # Globbed per-module, not enumerated: the desktop/Android test tasks now run in eight KMP
+      # modules, and a hand-written list of `shared/build/...` produced no artifact at all for a
+      # failure in the newer modules — the report is the only thing a red CI run leaves behind.
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-report
           path: |
-            shared/build/reports/tests/
-            shared/build/test-results/desktopTest/
+            **/build/reports/tests/
+            **/build/test-results/
 
       - name: Upload lint report
         if: always()
@@ -70,8 +82,7 @@ jobs:
         with:
           name: lint-report
           path: |
-            app/build/reports/lint-results-debug.html
-            shared/build/reports/lint-results-debug.html
+            **/build/reports/lint-results-debug.html
 
       # Globbed, not named: the APK carries its version and a build timestamp (see
       # app/build.gradle.kts), and Gradle leaves exactly one APK in this directory.

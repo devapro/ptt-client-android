@@ -60,7 +60,7 @@ The other two targets run from the same checkout, with the same interface:
 
 ```bash
 ./gradlew :desktopApp:run          # desktop — Linux, macOS, Windows
-open iosApp/iosApp.xcodeproj       # iOS — needs a Mac; Gradle builds :shared as a framework
+open iosApp/iosApp.xcodeproj       # iOS — needs a Mac; Gradle builds :ui-shell as a framework
 ```
 
 Then open **Settings → Relay**. **Default** dials the address the build ships with — for this
@@ -102,8 +102,9 @@ Toolchain and the two build constraints that are easy to break:
   MVI example.
 - **Ktor** — `ktor-client-websockets` over OkHttp for the socket; `ktor-server-cio` for the
   optional on-device relay.
-- **Koin** — DI, split across `:shared`'s `di/SharedDi.kt` (platform-independent) plus a small
-  platform module per target, and `:app`'s `di/AppDi.kt` (Android-only classes).
+- **Koin** — DI: `:shared`'s `di/SharedDi.kt` (platform-independent) plus a small platform module
+  per target, `:app`'s `di/AppDi.kt` (Android-only classes), and one screen-factory module per
+  feature (`registerMainScreenDi()` etc.) aggregated by each host at `startKoin`.
 - **Compose Multiplatform** + Material 3 for the interface on all three platforms, **Glance** for
   the Android widget, **DataStore** for settings.
 
@@ -111,10 +112,14 @@ Toolchain and the two build constraints that are easy to break:
 
 | Module | What it is |
 |---|---|
-| `:shared` | A Kotlin Multiplatform module — `androidTarget` + `jvm("desktop")` + `iosArm64`/`iosSimulatorArm64` (the last two behind a build guard). Everything platform-independent: `domain/`, `mvi/`, `model/`, `data/settings/`, `network/`, the fifteen reducers and the whole Compose UI |
-| `:app` | The Android launcher — `MainActivity`, the foreground service, the Glance widget, the overlay bubble, and the Android-only half of DI. Thirteen Kotlin files |
+| `:shared` | A Kotlin Multiplatform module — `androidTarget` + `jvm("desktop")` + `iosArm64`/`iosSimulatorArm64` (the last two behind a build guard). Everything platform-independent: `domain/`, `model/`, `data/settings/`, `network/`, the shared UI primitives that stay below `:core` (`ui/theme/`, `PttUiStatus`) and the single owner of Compose resources (`composeResources/`) |
+| `:features-api:main` / `:settings` / `:history` | Screen contracts only: a Voyager `Screen` type and a `<Name>ScreenFactory` interface per screen, so hosts can compose screens without depending on their implementations |
+| `:features:main` / `:settings` / `:history` | The three screen implementations (`MainScreen`, `SettingsScreen`, `HistoryScreen`), each bound to its contract via `<Name>ScreenFactoryImpl` |
+| `:ui-shell` | The single root host: `App()` (iOS UI root, rendering the Voyager `Navigator(MainScreen)`), `rememberPttHostUiEffects` (the desktop/iOS effects host), iOS's `MainViewController()`/`initKoinIos()`, and the `PTTdroidShared` framework declaration |
+| `:core` | The MVI infrastructure (`mvi/`) and the shared widgets (`ui/components/`), moved out of `:shared` in step 5 of the module-graph refactor with their package names unchanged; depends on `:shared` |
+| `:app` | The Android launcher — `MainActivity`, the foreground service, the Glance widget, the overlay bubble, and the Android-only half of DI. Fourteen Kotlin files |
 | `:desktopApp` | Hosts the shared UI in a `Window {}` and starts Koin itself |
-| `iosApp/` | An Xcode project; a `ComposeUIViewController` hosts `:shared`'s `App()` |
+| `iosApp/` | An Xcode project; a `ComposeUIViewController` hosts `:ui-shell`'s `App()` |
 
 Below `commonMain` there is one intermediate source set worth knowing about: **`jvmCommonMain`**,
 which `androidMain` and `desktopMain` both `dependsOn`. The OkHttp-backed HTTP client, the pinned
@@ -124,11 +129,12 @@ it — new JVM-only code belongs there rather than duplicated into both. iOS sup
 seams: Ktor's Darwin engine, a hand-rolled DER certificate-pin check, and `AVAudioEngine` for
 capture and playback.
 
-The same 159 unit tests are compiled and run twice, once per JVM target. iOS Kotlin can be
-frontend-compiled on Linux — `-PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64`, part
-of the normal gate — but only a Mac can link or run it, so `.github/workflows/ios.yml` is where iOS
-correctness is actually established. Per-platform detail:
-[`docs/platform-support.md`](docs/platform-support.md).
+The same 303 unit tests are compiled and run twice, once per JVM target (`:shared` plus the
+`:features-api:settings` and three `:features:*` test modules). iOS
+Kotlin can be frontend-compiled on Linux —
+`-PenableIosTargets=true :ui-shell:compileKotlinIosSimulatorArm64`, part of the normal gate — but
+only a Mac can link or run it, so `.github/workflows/ios.yml` is where iOS correctness is actually
+established. Per-platform detail: [`docs/platform-support.md`](docs/platform-support.md).
 
 Two things to know before changing anything:
 
@@ -157,11 +163,12 @@ its window is open, and the iOS build for as long as its audio session survives 
 ## Tests
 
 ```bash
-./gradlew :shared:testDebugUnitTest :shared:desktopTest       # 164 JVM tests, on both targets
-ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 45 Compose UI tests (of 49 total; 3 opt-in TLS tests need a live relay)
-./gradlew lintDebug                                          # 12 pre-existing findings, no more
+./gradlew testDebugUnitTest                                  # 303 JVM unit tests, on the androidTarget compilation
+./gradlew :shared:desktopTest :features-api:settings:desktopTest :features:main:desktopTest :features:settings:desktopTest :features:history:desktopTest   # the same 303, on the desktop compilation
+ANDROID_SERIAL=<serial> ./gradlew :core:connectedDebugAndroidTest :shared:connectedDebugAndroidTest :features:main:connectedDebugAndroidTest :features:settings:connectedDebugAndroidTest   # 53 instrumented tests: 47 Compose UI + 3 migration (of 53 total; 3 opt-in TLS tests skip without a live relay)
+./gradlew lintDebug                                          # pre-existing findings in :app only, no more
 ./gradlew -PenableIosTargets=true \
-  :shared:compileKotlinIosSimulatorArm64 :shared:compileKotlinIosArm64   # iOS, on Linux too
+  :ui-shell:compileKotlinIosSimulatorArm64 :ui-shell:compileKotlinIosArm64   # iOS, on Linux too
 ```
 
 The unit tests are mostly about the talk floor — above all that **pressing PTT must not open the
@@ -201,7 +208,7 @@ python3 -m http.server -d docs 8080   # then open http://localhost:8080
 | [`docs/build-and-run.md`](docs/build-and-run.md) | Toolchain and build constraints |
 | [`docs/testing.md`](docs/testing.md) | Test coverage and the manual device checklist |
 | [`docs/conventions.md`](docs/conventions.md) | Kotlin and UI style rules |
-| [`docs/known-issues.md`](docs/known-issues.md) | 33 fixed defects, open gaps, platform gotchas |
+| [`docs/known-issues.md`](docs/known-issues.md) | 41 fixed defects, open gaps, platform gotchas |
 | [`docs/fdroid.md`](docs/fdroid.md) | Releasing: the signing key, the official F-Droid catalogue |
 
 The wire protocol is specified in the server repo, at `ptt-server/docs/protocol.md`.

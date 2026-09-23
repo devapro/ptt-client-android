@@ -17,11 +17,12 @@ import org.koin.dsl.module
  * `:app`'s own Koin module — Android-only classes that need a real `Context`, `AudioRecord`/
  * `AudioTrack`, or `PttForegroundService`, none of which `:shared` can see.
  *
- * Everything platform-independent (the reducers, `PttController`, `MainActionProcessor`, the
- * `ViewModel`, `SettingsRepository`...) lives in `:shared`'s `sharedModule`
- * (`di/SharedDi.kt`); Android's other platform providers (the settings `DataStore`, the on-device
+ * Everything platform-independent (`PttController`, `SettingsRepository`, the stores, the
+ * domain wiring...) lives in `:shared`'s `sharedModule`
+ * (`di/SharedDi.kt`); each feature's MVI stack registers itself via `register*ScreenDi()` in
+ * its own module; Android's other platform providers (the settings `DataStore`, the on-device
  * relay) live in `:shared`'s `sharedAndroidModule` (`di/SharedDiAndroid.kt`). `PTTdroidApplication`
- * loads all three together — see that file — so it does not matter that `VoiceRecorderContract`/
+ * loads all of them together — see that file — so it does not matter that `VoiceRecorderContract`/
  * `VoicePlayerContract` are only bound here while `PttController` (which consumes them) is
  * declared in `sharedModule`: Koin merges every loaded module into one graph.
  */

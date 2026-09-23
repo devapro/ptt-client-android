@@ -29,6 +29,15 @@ java {
 
 dependencies {
     implementation(project(":shared"))
+    // The root host — Main.kt renders :ui-shell's Voyager Navigator host (and its
+    // rememberPttHostUiEffects), starting Koin with the three feature screen modules' bindings,
+    // reachable through :ui-shell's api edges (Phase 2 of the module-graph refactor).
+    implementation(project(":ui-shell"))
+    // Main.kt touches members the feature ViewModels inherit from :core's MviViewModel, and
+    // supertype visibility is not transitive through an `implementation` edge — :ui-shell keeps
+    // :core as `implementation`, so the edge has to be declared here directly (same reason as
+    // the direct :core edges in :app's and :ui-shell's build files).
+    implementation(projects.core)
     implementation(compose.desktop.currentOs)
     // :shared depends on these `implementation`-scoped, so they do not reach this module
     // transitively; Main.kt starts Koin itself, reads the graph through the Compose integration

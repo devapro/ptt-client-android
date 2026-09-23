@@ -305,10 +305,14 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
         composables &mdash; so the button, the colours and the wording cannot drift apart between
         platforms, because there is only one of each to change.</p>
 
-        <p>A single <code>:shared</code> module holds everything that is not tied to a device: the
-        socket, the talk-floor logic, the settings store, the thirteen reducers and the whole interface.
-        What is left outside it is small &mdash; the Android launcher is thirteen Kotlin files, and
-        the desktop app is one <code>Window {}</code>.</p>
+        <p>A <code>:shared</code> module holds everything that is not tied to a device: the
+        socket, the talk-floor logic, the settings store and the shared UI primitives.
+        <code>:core</code> carries the MVI base and the shared widgets. The interface itself is
+        split by feature &mdash; three small <code>:features:*</code> modules behind
+        <code>:features-api:*</code> contracts, each owning its screen and its reducers, composed
+        by a <code>:ui-shell</code> root host. What is left outside all of it is small &mdash; the
+        Android launcher is fourteen Kotlin files, and the desktop app is one
+        <code>Window {}</code>.</p>
 
         <p>Below that, one intermediate source set belongs to Android and desktop together: the
         OkHttp transport, the pinned trust manager and the on-device relay all need JVM APIs that
@@ -322,12 +326,16 @@ footer{padding:64px 0 88px; border-top:1px solid var(--edge)}
 ├─ androidMain
 ├─ desktopMain
 └─ iosMain
+:core             <span class="c">MVI base + shared widgets</span>
+:features-api/*   <span class="c">screen contracts</span>
+:features/*       <span class="c">screen implementations</span>
+:ui-shell         <span class="c">App() host, iOS framework</span>
 
 :app          <span class="c">Android launcher, service,</span>
               <span class="c">widget, overlay bubble</span>
 :desktopApp   <span class="c">one Window {}</span>
 iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
-        <p class="muted small">The same 150 unit tests run twice, compiled once for Android and
+        <p class="muted small">The same 303 unit tests run twice, compiled once for Android and
         once for desktop. iOS Kotlin is compiled on every push &mdash; which a Linux machine can
         do &mdash; then linked into a real framework and built through Xcode on a macOS runner,
         which is the only place that part can happen.</p>
@@ -390,7 +398,7 @@ iosApp/       <span class="c">Xcode, ComposeUIViewController</span></pre>
           </tr>
           <tr>
             <th scope="row">Packaged by CI</th>
-            <td>Signed APK, F&#8209;Droid repository</td>
+            <td>Signed APK on the GitHub release</td>
             <td><code>.deb</code> <code>.msi</code> <code>.exe</code> <code>.dmg</code></td>
             <td>Xcode archive, by hand</td>
           </tr>
@@ -558,7 +566,7 @@ adb install -r -g \
     :desktopApp:run</code> opens the same interface in a window, and
     <code>:desktopApp:packageDeb</code> (or <code>packageMsi</code>, <code>packageDmg</code> on
     their own OS) makes something installable. For iOS, open <code>iosApp/iosApp.xcodeproj</code>
-    in Xcode &mdash; Gradle builds <code>:shared</code> into a framework as part of that build.</p>
+    in Xcode &mdash; Gradle builds <code>:ui-shell</code> into a framework as part of that build.</p>
     <div class="note" style="margin-top:30px">
       <strong>No server at all?</strong> Turn on <em>Host a relay on this device</em> in Settings.
       That phone runs the relay itself: point it at <code>127.0.0.1</code>, and point the other
@@ -618,12 +626,13 @@ adb install -r -g \
     <div class="cols" style="margin-top:34px; align-items:start">
       <div>
         <h3><a href="https://github.com/devapro/ptt-client-android">ptt-client-android</a></h3>
-        <p class="muted small">Kotlin, MVI, Compose Multiplatform. Four modules
-        &mdash; <code>:shared</code>, the Android <code>:app</code>, <code>:desktopApp</code> and an
+        <p class="muted small">Kotlin, MVI, Compose Multiplatform. A handful of modules
+        &mdash; <code>:shared</code>, the feature screens and their contracts, the
+        <code>:ui-shell</code> host, the Android <code>:app</code>, <code>:desktopApp</code> and an
         Xcode project &mdash; plus Koin and the Ktor client. One controller owns the connection, the
         microphone and the speaker; on Android it is hosted by a foreground service, and the screen,
         the floating bubble and the Glance widget are all observers of a single state flow.</p>
-        <p class="small" style="margin-top:.9em">136 unit tests, on two targets · 39 Compose UI
+        <p class="small" style="margin-top:.9em">303 unit tests, on two targets · 47 Compose UI
         tests · iOS compiled on every push</p>
       </div>
       <div>

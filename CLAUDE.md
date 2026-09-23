@@ -1,7 +1,8 @@
 # CLAUDE.md — ptt-client-android
 
 A push-to-talk client for Android, desktop and iOS, built on one Compose Multiplatform codebase.
-Self-rolled MVI (`mvi/`) + Koin + Jetpack Compose, with an Android foreground service, a Glance
+Self-rolled MVI (`mvi/`, in `:core` since step 5 of the module-graph refactor) + Koin + Jetpack
+Compose, with an Android foreground service, a Glance
 widget and a floating overlay on Android only. Talks to the WebSocket relay in the sibling
 `../ptt-server` repo, or to the relay the Android/desktop builds can host themselves
 (`internalserver/`).
@@ -10,10 +11,14 @@ widget and a floating overlay on Android only. Talks to the WebSocket relay in t
 
 | Module | What it is | Namespace |
 |---|---|---|
-| `:shared` | Kotlin Multiplatform: `androidTarget` + `jvm("desktop")` + `iosArm64`/`iosSimulatorArm64` (the last two behind a build guard, see below). Everything platform-independent: `domain/`, `mvi/`, `model/`, `data/settings/`, `network/`, the Compose UI (`ui/`), the fifteen `reducer/`s, `MainActivityViewModel`, the platform-independent half of Koin (`di/SharedDi.kt`) | `com.github.devapro.pttdroid.shared` |
-| `:app` | The Android application launcher: `MainActivity`, `service/`, `overlay/`, `widget/`, the Android-only half of Koin (`di/AppDi.kt`), and everything genuinely Android-only — 13 Kotlin files | `com.github.devapro.pttdroid` |
-| `:desktopApp` | Hosts the shared Compose UI in a `Window {}`, starts Koin itself (`Main.kt`) | — |
-| `iosApp/` | An Xcode project. `ComposeUIViewController` hosts `:shared`'s `App()`, called from `iosApp/iosApp/ContentView.swift` | — |
+| `:shared` | Kotlin Multiplatform: `androidTarget` + `jvm("desktop")` + `iosArm64`/`iosSimulatorArm64` (the last two behind a build guard, see below). Everything platform-independent: `domain/`, `model/` (the shared `UiEvent`), `data/settings/`, `history/` (incl. the `HistoryBadge` single), `network/`, the shared UI foundation that must stay below `:core` (`ui/PttUiStatus.kt`, `ui/theme/`), the platform-independent half of Koin (`di/SharedDi.kt`) — and **all `composeResources/`** (single resource owner; every other module reads its `Res`. `:shared` is also the module below everything, so it must never depend on `:core`, a feature or `:ui-shell`, and the resources package must not move) | `com.github.devapro.pttdroid.shared` |
+| `:core` | KMP, `implementation(projects.shared)` — `implementation`, not `api`, because every consumer of the widgets' `:shared`-typed signatures (`PttUiStatus`, `AudioOutput`) already depends on `:shared` directly. Holds the MVI infra (`mvi/`: `MviViewModel`, `ActionProcessor`, `Reducer`) and the shared widgets (`ui/components/`), moved out of `:shared` in step 5 with **package names unchanged** (`com.github.devapro.pttdroid.mvi`, `...ui.components`). Owns the `internal` `PttUiStatus`→Compose-colour extension (`ui/components/UiStatusColor.kt`, with its only consumers). No `composeResources/` — its generated empty `Res` must stay unused | `com.github.devapro.pttdroid.core` |
+| `:features-api:{main,settings,history}` | Contract KMP modules: the Voyager `Screen` destinations themselves (`MainScreen`, `SettingsScreen`, `HistoryScreen` — argument-less `data object`s whose `Content()` `koinInject`s the slice's factory), one `XxxScreenFactory` per screen (argument-less `@Composable fun CreateXxxScreen()` — each impl in `:features:*` resolves its own view model, host effects and navigator), and each slice's own state/action types (`MainState`/`MainAction`, `SettingsState`/`SettingsAction`/`SettingsFormState`/`SettingsEdit`, `HistoryState`/`HistoryAction`). Never depend on `:features:*`, `:core`, or each other; `api`-expose voyager-navigator | `com.github.devapro.pttdroid.features.api.<name>` |
+| `:features:{main,settings,history}` | The screens + their whole MVI stacks: `MainScreen.kt`, `SettingsScreen.kt`, `HistoryScreen.kt` (pure composables, still fully threaded — previews and the instrumented tests drive them directly) with their private subcomposables and previews, each module owning its `XxxViewModel` (registered as a Koin `single`), `XxxActionProcessor`, reducers, self-sufficient `<Name>ScreenFactoryImpl` root and `fun Module.register<Name>ScreenDi()`. Depend on `:shared` + `:core` (the MVI base and, for Main, the widgets) + own api; `:features:main` additionally contract-only on `:features-api:{settings,history}` to push those destinations — still no `:features:x -> :features:y` edge | `com.github.devapro.pttdroid.features.<name>` |
+| `:ui-shell` | KMP root host (`:shared` + `:core` + all features): `App()` (iOS UI root — renders `Navigator(MainScreen)` under a `LocalPttUiEffects` host) and `rememberPttHostUiEffects` (the desktop/iOS `PttUiEffects`), `MainViewController.kt` + `KoinIos.kt` (moved from `:shared`'s iosMain), and the owner of the `PTTdroidShared` iOS framework export since Phase 2. Needs the direct `:core` edge because it resolves members the feature ViewModels inherit from `MviViewModel` | `com.github.devapro.pttdroid.uishell` |
+| `:app` | The Android application launcher: `MainActivity`, `service/`, `overlay/`, `widget/`, the Android-only half of Koin (`di/AppDi.kt`), and everything genuinely Android-only — 14 Kotlin files. Depends on `:shared` + `:core` (same `MviViewModel`-supertype reason as `:ui-shell`) + `:ui-shell` | `com.github.devapro.pttdroid` |
+| `:desktopApp` | Hosts the shared Compose UI in a `Window {}` — renders `Navigator(MainScreen)` with `:ui-shell`'s `rememberPttHostUiEffects` — starts Koin itself (`Main.kt`) | — |
+| `iosApp/` | An Xcode project. `ComposeUIViewController` hosts `:ui-shell`'s `App()`, called from `iosApp/iosApp/ContentView.swift`; its build phase runs `:ui-shell:embedAndSignAppleFrameworkForXcode` | — |
 
 **The one thing to know before changing `:shared`'s source-set layout:** below `commonMain`,
 `androidMain` and `desktopMain` both `dependsOn` an intermediate source set, **`jvmCommonMain`**,
@@ -51,15 +56,15 @@ has and does not have: [`docs/platform-support.md`](docs/platform-support.md). D
 ## Build / test / run
 
 ```bash
-./gradlew assembleDebug                        # debug APK (:app)
-./gradlew testDebugUnitTest                    # 240 unit tests (:shared, androidTarget compilation)
-./gradlew :shared:desktopTest                   # the same 240 tests again, desktop compilation
-./gradlew lintDebug                            # :app: 21 pre-existing findings; :shared: 0
-ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 53 instrumented (47 UI + 3 migration + 3 opt-in TLS, skipped without a relay)
+./gradlew assembleDebug                        # debug APK (:app) + every library module it pulls in
+./gradlew testDebugUnitTest                    # 311 unit tests across five modules (:shared 215, :features-api:settings 55, :features:main 14, :features:settings 18, :features:history 9; androidTarget compilation; :core and :ui-shell have none)
+./gradlew desktopTest                          # the same 311 tests again, desktop compilation — unqualified runs the task in every KMP module, which is all five that have tests
+./gradlew lintDebug                            # :app: 21 pre-existing findings; the libraries: 0
+ANDROID_SERIAL=<serial> ./gradlew :core:connectedDebugAndroidTest :shared:connectedDebugAndroidTest :features:main:connectedDebugAndroidTest :features:settings:connectedDebugAndroidTest   # 53 instrumented (47 UI — 7 :core + 15 :features:main + 25 :features:settings, PTTButtonTest moved to :core in step 5 — + 3 settings-migration + 3 opt-in TLS in :shared, the TLS ones skipped without a relay)
 ./gradlew build                                # full build, Android + desktop
 ./gradlew assembleRelease                      # unsigned unless PTT_KEYSTORE_PATH and friends are set
 ./gradlew :desktopApp:packageDeb               # a .deb (also packageMsi, packageDmg on their native OS)
-./gradlew -PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64 :shared:compileKotlinIosArm64   # frontend-compile iOS, even on Linux — cheap, catches most cinterop mistakes, part of the normal gate
+./gradlew -PenableIosTargets=true :ui-shell:compileKotlinIosSimulatorArm64 :ui-shell:compileKotlinIosArm64   # frontend-compile iOS for :ui-shell and, transitively, every other KMP module (:shared's iosMain actuals included) — cheap, catches most cinterop mistakes, part of the normal gate
 adb -s <serial> install -r -g app/build/outputs/apk/debug/PTTdroid-*-debug.apk
 ```
 
@@ -84,20 +89,23 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
   `:shared`. API 37 is not installed here, and `core-ktx` > 1.18.0, `lifecycle` > 2.10.0 and
   Compose BOM > 2026.06.01 all require it. Check `minCompileSdk` in the AAR's
   `aar-metadata.properties` first — see [`docs/build-and-run.md`](docs/build-and-run.md).
-- **`:shared` must keep the deprecated `com.android.library` Gradle plugin.** Do not switch it to
-  `com.android.kotlin.multiplatform.library` — Kotlin's own deprecation warning suggests exactly
-  that, and the build stays green either way, but switching makes Compose Multiplatform resources
-  (`composeResources/`, `Res.string.*`) silently stop packaging into the APK: the app then crashes
-  at launch with `MissingResourceException` (JetBrains CMP-9547). Verified for this repo by
-  inspecting a release APK for `assets/composeResources/com.github.devapro.pttdroid.shared.resources/`
+- **`:shared` — and every KMP module in its shape: `:core`, `:features-api:*`, `:features:*`,
+  `:ui-shell` — must keep the deprecated `com.android.library` Gradle plugin.** Do not switch any
+  of them to `com.android.kotlin.multiplatform.library` — Kotlin's own deprecation warning suggests
+  exactly that, and the build stays green either way, but switching makes Compose Multiplatform
+  resources (`composeResources/`, `Res.string.*`) silently stop packaging into the APK: the app
+  then crashes at launch with `MissingResourceException` (JetBrains CMP-9547). Verified for this
+  repo by inspecting a release APK for
+  `assets/composeResources/com.github.devapro.pttdroid.shared.resources/`
   — don't take it on faith after touching the plugin.
-- **`:shared`'s `androidMain` must keep `enforcedPlatform(libs.androidx.compose.bom)`, and the root
+- **`:shared`'s `androidMain` must keep `enforcedPlatform(libs.androidx.compose.bom)`** (and so
+  must every other KMP module that uses Compose — they all copy the line), **and the root
   `build.gradle.kts` must keep forcing `androidx.lifecycle:*-compose:2.10.0`.** Compose
   Multiplatform 1.12.0 and `org.jetbrains.androidx.lifecycle` 2.11.0 both publish artifacts that
   require compileSdk 37; these two forces are what keeps `:shared` and `:app` resolving the same
   compileSdk-36-safe versions instead of Gradle's default "highest wins". Read the KDoc on both
   force sites (`shared/build.gradle.kts`, root `build.gradle.kts`) before touching either.
-- **Do not add `iosX64()` to `:shared`'s target list.** Compose Multiplatform publishes no
+- **Do not add `iosX64()` to any module's target list.** Compose Multiplatform publishes no
   `iosX64` variant of any Compose artifact (checked back to 1.8.2) — declaring it fails
   `appleMain` dependency resolution outright. Only `iosArm64`/`iosSimulatorArm64` are declared, and
   only when `HostManager.hostIsMac || -PenableIosTargets=true`.
@@ -108,11 +116,12 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
   `kotlinx.cinterop.get`/`set`/`plus` (`CPointer`/`CValuesRef` indexing, used in both
   `PinnedTrust.ios.kt` and `IosAudio.kt`) all look like unresolved members without the explicit
   import. This cost real debugging time getting `iosMain` to compile — don't rediscover it.
-- **`-PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64`/`compileKotlinIosArm64` work
-  on Linux and are part of the normal gate.** This machine cannot link or run Kotlin/Native Apple
-  binaries, but it can frontend-compile them, which catches a bad `expect`/`actual` pair or cinterop
-  signature error in well under a minute — run it after touching anything under `shared/src/iosMain`
-  even without a Mac.
+- **`-PenableIosTargets=true :ui-shell:compileKotlinIosSimulatorArm64`/`compileKotlinIosArm64`
+  work on Linux and are part of the normal gate.** (:ui-shell's iOS compilations pull every other
+  KMP module's as dependency tasks, so this covers `:shared`'s iosMain too.) This machine cannot
+  link or run Kotlin/Native Apple binaries, but it can frontend-compile them, which catches a bad
+  `expect`/`actual` pair or cinterop signature error in well under a minute — run it after
+  touching anything under any module's `src/iosMain` even without a Mac.
 - **`:app`'s release build type currently ships with `isMinifyEnabled = false`** (matching what
   F-Droid has always distributed) **and `app/proguard-rules.pro` is dormant as a result.** It
   already carries the two keep rules a minified build needs (Ktor's JVM-only debugger-detector
@@ -193,8 +202,8 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
 - Run the gates before declaring work done:
   ```
   ./gradlew assembleDebug testDebugUnitTest lintDebug
-  ./gradlew :shared:desktopTest
-  ./gradlew -PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64 :shared:compileKotlinIosArm64
+  ./gradlew desktopTest
+  ./gradlew -PenableIosTargets=true :ui-shell:compileKotlinIosSimulatorArm64 :ui-shell:compileKotlinIosArm64
   env -u PTT_KEYSTORE_PATH ./gradlew :app:assembleRelease
   ```
   and, if the change touches release packaging, DI, or anything R8 might see differently in a

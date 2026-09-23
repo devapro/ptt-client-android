@@ -17,6 +17,9 @@ coroutines = "1.11.0"
 serializationJson = "1.11.0"
 datetime = "0.7.1"
 composeMultiplatform = "1.12.0"
+# Routing library under evaluation (Phase 2 probe): the reference project pins 1.1.0-beta03.
+# Apache-2.0, on Maven Central — see the F-Droid licence rule in CLAUDE.md.
+voyager = "1.1.0-beta03"
 # org.jetbrains.androidx.lifecycle — the multiplatform lifecycle fork used by :shared's common
 # code. Distinct from the "lifecycle" version above, which is androidx.lifecycle (Android-only,
 # used directly by :app).
@@ -69,6 +72,8 @@ androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-co
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+# Routing (Voyager) — see the `voyager` version note above; probed for compatibility in Phase 2.
+voyager-navigator = { group = "cafe.adriel.voyager", name = "voyager-navigator", version.ref = "voyager" }
 network-ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
 # Test-only: generates a real self-signed certificate to point the pinned trust manager at.
 network-ktor-tls-certificates = { group = "io.ktor", name = "ktor-network-tls-certificates", version.ref = "ktor" }

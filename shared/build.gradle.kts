@@ -55,12 +55,12 @@ kotlin {
         // real device or Apple Silicon simulator behind it anyway, so there is nothing lost by
         // targeting only iosArm64 (devices) and iosSimulatorArm64 (Apple Silicon simulators). Do
         // not re-add it.
-        listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
-            target.binaries.framework {
-                baseName = "PTTdroidShared"
-                isStatic = true
-            }
-        }
+        // No `target.binaries.framework {}` any more: as of Phase 2 of the module-graph refactor
+        // the `PTTdroidShared` framework is exported by :ui-shell instead (it hosts
+        // App()/MainViewController and is the module allowed to depend on the features).
+        // :shared's iOS targets remain — its iosMain actuals still have to compile — they just
+        // produce a klib, not a framework.
+        listOf(iosArm64(), iosSimulatorArm64())
 
         // applyDefaultHierarchyTemplate() (above) already creates the `iosMain` intermediate
         // source set and wires `iosMain.dependsOn(commonMain)` as soon as any `ios*` target is
@@ -81,12 +81,12 @@ kotlin {
         val jvmCommonTest by creating { dependsOn(commonTest.get()) }
         androidUnitTest.get().dependsOn(jvmCommonTest)
         val desktopTest by getting { dependsOn(jvmCommonTest) }
-        // The 39 Compose UI tests (button/main screen/settings) plus the Phase 3 DataStore
-        // migration test and the Phase-3/4 TLS integration test, moved here from :app's
-        // androidTest in Phase 5 — the composables and the settings/network code they exercise
-        // all live in :shared now. androidInstrumentedTest already depends on androidMain (KMP's
-        // default hierarchy), so commonMain types (Res.string.*, PttUiStatus, ...) are visible
-        // without an extra dependsOn.
+        // The instrumented tests living here after step 5 of the module-graph refactor: the
+        // Phase 3 DataStore migration test and the Phase-3/4 TLS integration test. PTTButtonTest
+        // moved to :core with the widget it tests, and MainScreenTest/SettingsScreenTest live in
+        // :features:main / :features:settings with the screens they test.
+        // androidInstrumentedTest already depends on androidMain (KMP's default hierarchy), so
+        // commonMain types (Res.string.*, PttUiStatus, ...) are visible without an extra dependsOn.
 
         commonMain.dependencies {
             implementation(compose.runtime)
