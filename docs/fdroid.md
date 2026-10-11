@@ -230,11 +230,11 @@ env -u PTT_KEYSTORE_PATH -u PTT_DEFAULT_RELAY ./gradlew clean :app:assembleRelea
   failure mode a wrong Gradle plugin choice on `:shared` produces (see `docs/build-and-run.md`)
   is release-build-shaped risk, not just a debug-build one, so this was checked on the actual
   release APK, not just `assembleDebug`.
-- The signed release APK installs and **launches** on a device/emulator without crashing. This was
-  also checked with `isMinifyEnabled = true` during an earlier phase, before that setting was
-  reverted to match what `main` (and F-Droid) has always shipped — see `docs/known-issues.md`'s
-  R8/WorkManager gotcha for the one real issue that surfaced and how it was fixed, kept in
-  `app/proguard-rules.pro` in case minification is turned back on.
+- The signed release APK installs and **launches** on a device/emulator without crashing. 
+  The release build is now minified (R8) for Google Play's code-optimization check — see
+  `docs/known-issues.md`'s R8/WorkManager gotcha and `app/proguard-rules.pro`. R8 output is
+  deterministic for identical inputs, but re-run the reproducibility check before the next
+  F-Droid submission, since the recipe has never been verified against a minified build.
 
 ## What is not automated
 

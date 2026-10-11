@@ -161,12 +161,13 @@ overlap with.
 - **A freshly placed widget has no state** until something changes, so `provideGlance` seeds it from
   the controller.
 - **Emulator microphones capture silence.** Verify frame flow and floor state, not audibility.
-- **`:app`'s release build currently ships with `isMinifyEnabled = false`, so R8 does not run and
-  the two keep rules below are dormant.** They stay in `app/proguard-rules.pro` because a minified
-  `:app:assembleRelease` needs them and nothing in this repo's own code would suggest either one.
-  Both were found by actually installing and launching a minified release build (see
-  `docs/fdroid.md` / the Phase 8 F-Droid reproducibility check, from before minification was
-  reverted), not by reading R8's warnings alone — the first is a build failure, the second is a
+- **`:app`'s release build ships minified (`isMinifyEnabled = true`, `isShrinkResources = true`)
+  — Google Play flagged the unobfuscated DEX ("DEX code optimization below threshold").** The two
+  keep rules below in `app/proguard-rules.pro` are what a minified `:app:assembleRelease` needs,
+  and nothing in this repo's own code would suggest either one. Both were found by actually
+  installing and launching a minified release build, not by reading R8's warnings alone; the
+  build was re-verified in October 2026 (signed with a throwaway key, installed, launched, connected
+  to the relay) — the first is a build failure, the second is a
   launch-time crash:
   - Ktor's client-core carries a debugger-presence check
     (`io.ktor.util.debug.IntellijIdeaDebugDetector`) that references

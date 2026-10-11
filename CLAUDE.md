@@ -122,15 +122,14 @@ Details: [`docs/build-and-run.md`](docs/build-and-run.md).
   link or run Kotlin/Native Apple binaries, but it can frontend-compile them, which catches a bad
   `expect`/`actual` pair or cinterop signature error in well under a minute — run it after
   touching anything under any module's `src/iosMain` even without a Mac.
-- **`:app`'s release build type currently ships with `isMinifyEnabled = false`** (matching what
-  F-Droid has always distributed) **and `app/proguard-rules.pro` is dormant as a result.** It
-  already carries the two keep rules a minified build needs (Ktor's JVM-only debugger-detector
-  references, and the WorkManager/Room reflective-instantiation gap — full explanation in
-  `docs/known-issues.md`), found by actually installing and launching a minified release build
-  during an earlier, reverted phase. If minification is ever turned back on, re-run that check
-  (`env -u PTT_KEYSTORE_PATH ./gradlew :app:assembleRelease` with `isMinifyEnabled = true`, sign
-  with a throwaway key, install, launch) rather than assuming the existing two rules are still
-  sufficient.
+- **`:app`'s release build type ships with `isMinifyEnabled = true` and `isShrinkResources = true`**
+  (R8 full mode). Google Play's code-optimization check flags a release with no obfuscation, so
+  this is not optional for the Play build. `app/proguard-rules.pro` carries the two keep rules it
+  needs (Ktor's JVM-only debugger-detector references, and the WorkManager/Room
+  reflective-instantiation gap — full explanation in `docs/known-issues.md`). Any change to
+  release packaging, DI, serialization or reflection must be re-checked on a minified build:
+  `env -u PTT_KEYSTORE_PATH ./gradlew :app:assembleRelease`, sign with a throwaway key, install,
+  launch and connect — a debug build passes cases R8 does not.
 - **Never hardcode a server host or port.** They are user settings in `data/settings/AppSettings.kt`.
   `customHost`/`customPort` are what the user typed; `serverHost`/`serverPort` are derived from
   `serverMode` and are what everything downstream dials. Read the derived pair, and do not make the

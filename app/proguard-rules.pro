@@ -20,9 +20,7 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
-# Currently dormant: app/build.gradle.kts has isMinifyEnabled = false for the release build type,
-# so R8 does not run and this rule has no effect. Required again if and when minification is
-# enabled.
+# Active: app/build.gradle.kts has isMinifyEnabled = true for the release build type.
 #
 # Ktor's client-core carries a debugger-presence check (io.ktor.util.debug.IntellijIdeaDebugDetector)
 # that references java.lang.management.ManagementFactory/RuntimeMXBean — real JVM classes that do
@@ -34,9 +32,7 @@
 -dontwarn java.lang.management.ManagementFactory
 -dontwarn java.lang.management.RuntimeMXBean
 
-# Currently dormant: app/build.gradle.kts has isMinifyEnabled = false for the release build type,
-# so R8 does not run and this rule has no effect. Required again if and when minification is
-# enabled.
+# Active: app/build.gradle.kts has isMinifyEnabled = true for the release build type.
 #
 # WorkManager (a transitive dependency, pulled in by androidx.datastore/androidx.glance — this
 # app never calls WorkManager itself) auto-initializes androidx.work.impl.WorkManagerImpl via a

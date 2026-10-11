@@ -92,8 +92,8 @@ jobs:
 
       # `package<Format>`, not `packageRelease<Format>`: the release variants run ProGuard over
       # the desktop distribution, and this app's Koin/Ktor wiring is exactly the reflective kind
-      # that needs keep rules proved by launching the result. :app ships unminified for the same
-      # reason (see CLAUDE.md). Turning that on is a deliberate change, not a CI default.
+      # that needs keep rules proved by launching the result. :app is minified and was proved that
+      # way (see CLAUDE.md); the desktop distribution has not been, so it stays off by default.
       #
       # Building through bash on every OS keeps one command: gradlew's shell script runs fine
       # under Git Bash on the Windows runner.

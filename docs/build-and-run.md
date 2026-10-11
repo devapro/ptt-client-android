@@ -62,7 +62,7 @@ Two limits worth knowing before pointing anyone at those files:
 
 The workflow runs `package<Format>`, not `packageRelease<Format>`. The release variants run
 ProGuard over the distribution, and the Koin/Ktor wiring here is the reflective kind that needs
-keep rules proved by launching the result — the same reason `:app` ships unminified.
+keep rules proved by launching the result. (`:app` is minified, with keep rules proved that way.)
 
 Install the Android app:
 
