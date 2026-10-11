@@ -21,7 +21,7 @@ Builds:
       - yes
   - versionName: 1.0.2
     versionCode: 10002
-    commit: v1.0.2
+    commit: 8f8e7baad7d41e2f3339f1d416510cfd7fc97084
     subdir: app
     gradle:
       - yes
