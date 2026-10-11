@@ -17,8 +17,8 @@ read that rather than assuming.
 
 ```bash
 ./gradlew assembleDebug                       # debug APK (:app, pulling in :shared, :core, :features-api:*, :features:* and :ui-shell)
-./gradlew testDebugUnitTest                   # 311 JVM unit tests across five modules (:shared, :features-api:settings, the three :features:*), on the androidTarget compilation
-./gradlew desktopTest                         # the same 311 tests again, on the desktop compilation — unqualified, so every module's desktopTest runs
+./gradlew testDebugUnitTest                   # 390 JVM unit tests across six modules (:shared, :app, :features-api:settings, the three :features:*), on the androidTarget compilation
+./gradlew desktopTest                         # 378 of the same tests, on the desktop compilation — unqualified runs the task in every KMP module; :app's 12 are Android-only
 ./gradlew lintDebug                           # :app: 21 pre-existing findings; every library module: 0
 ./gradlew assembleRelease                     # release APK — unsigned unless PTT_KEYSTORE_PATH and friends are set
 ./gradlew build                               # everything :app, :shared and the Phase 2 modules build for Android + desktop

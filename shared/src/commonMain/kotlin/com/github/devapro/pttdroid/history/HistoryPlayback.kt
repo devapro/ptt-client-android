@@ -18,7 +18,8 @@ import kotlinx.coroutines.launch
  * free — but it also means a playback pump shares the one AudioTrack with incoming live audio,
  * so the owner (`PttController`) must call [stop] before anything real can be heard; it does.
  * Frames are paced at wire rate ([FRAME_INTERVAL_MS] per [AudioConfig.FRAME_BYTES]) because the
- * track's writes are non-blocking — a burst would simply be dropped.
+ * player contract is fire-and-forget with a bounded queue — a burst would just be dropped there
+ * too, and pacing keeps [stop] responsive to within one frame.
  *
  * [playingId] reports the record id on start and null on stop or natural end, so the owner
  * (`PttController`) can mirror it into `PttState` next to everything else the UI watches.
@@ -58,6 +59,10 @@ class HistoryPlayback(
         job?.cancel()
         job = null
         _playingId.value = null
+        // Cancelling the pump only stops *future* writes — the frames already handed to the
+        // player sit in its queue and device buffer and play out regardless (a record the user
+        // just deleted or stopped). [VoicePlayerContract.stop] discards them.
+        player.stop()
     }
 
     /** True while a pump is running — the interrupt checks in `PttController` read this. */

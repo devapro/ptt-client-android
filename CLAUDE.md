@@ -57,8 +57,8 @@ has and does not have: [`docs/platform-support.md`](docs/platform-support.md). D
 
 ```bash
 ./gradlew assembleDebug                        # debug APK (:app) + every library module it pulls in
-./gradlew testDebugUnitTest                    # 311 unit tests across five modules (:shared 215, :features-api:settings 55, :features:main 14, :features:settings 18, :features:history 9; androidTarget compilation; :core and :ui-shell have none)
-./gradlew desktopTest                          # the same 311 tests again, desktop compilation — unqualified runs the task in every KMP module, which is all five that have tests
+./gradlew testDebugUnitTest                    # 396 unit tests across six modules (:shared 263, :features-api:settings 55, :features:history 28, :features:settings 18, :features:main 14, :app 18; androidTarget compilation; :core and :ui-shell have none)
+./gradlew desktopTest                          # 378 unit tests, desktop compilation — the five KMP modules above; :app's 18 are Android-only — unqualified runs the task in every KMP module
 ./gradlew lintDebug                            # :app: 21 pre-existing findings; the libraries: 0
 ANDROID_SERIAL=<serial> ./gradlew :core:connectedDebugAndroidTest :shared:connectedDebugAndroidTest :features:main:connectedDebugAndroidTest :features:settings:connectedDebugAndroidTest   # 53 instrumented (47 UI — 7 :core + 15 :features:main + 25 :features:settings, PTTButtonTest moved to :core in step 5 — + 3 settings-migration + 3 opt-in TLS in :shared, the TLS ones skipped without a relay)
 ./gradlew build                                # full build, Android + desktop

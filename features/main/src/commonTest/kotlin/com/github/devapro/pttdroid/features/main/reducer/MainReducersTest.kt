@@ -72,8 +72,9 @@ class MainReducersTest {
 
         override suspend fun connect(endpoint: PttEndpoint) = awaitCancellation()
         override suspend fun disconnect() = Unit
-        override suspend fun send(message: ClientMessage) {
+        override suspend fun send(message: ClientMessage): Boolean {
             sent += message
+            return true
         }
         override suspend fun sendAudio(pcm: ByteArray): Boolean = true
 
@@ -97,6 +98,7 @@ class MainReducersTest {
     private class StubPlayer(private val order: MutableList<String>? = null) : VoicePlayerContract {
         override fun prepare(): Boolean = true
         override fun play(pcm: ByteArray) = Unit
+        override fun stop() = Unit
         override fun setOutput(output: AudioOutput) {
             order?.add("apply")
         }

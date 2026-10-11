@@ -232,7 +232,7 @@ view models, never duplicated.
 | `Close` | `CloseHistoryReducer` | Deliberately stops nothing — replay survives leaving the list; the root pops back to Main on the action |
 | `PlayRecord(id)` | `PlayRecordReducer` | Looks the record up in the store, `PttController.playHistory()` — refused there while the floor is busy |
 | `StopRecordPlayback` | `StopRecordPlaybackReducer` | `PttController.stopHistoryPlayback()`, no-op when nothing plays |
-| `DeleteRecord(id)` | `DeleteRecordReducer` | Stops playback first if that row was audible, then removes file and index entry |
+| `DeleteRecord(id)` | `DeleteRecordReducer` | Stops playback first if that row is *live*-playing (reads `PttController`'s `historyPlayingId`, never the mirror — #44), which flushes the buffered tail through `VoicePlayerContract.stop()`, then removes file and index entry and drops the row from `records` locally so the open list updates without the persistence round-trip |
 
 ## Settings form state
 
@@ -462,22 +462,30 @@ for any record, `markAllSeen(clock.nowMs())` runs when the list opens (monotonic
 backwards cannot resurrect unread), and there is deliberately no notification — badge only.
 
 **Playback reuses the live speaker and always loses to it.** `HistoryPlayback` pumps the stored
-PCM back through the same `VoicePlayerContract` at wire rate (40 ms per frame — `AudioTrack`
-writes are non-blocking, so a burst would just be dropped), which makes history respect the
-speaker/earpiece and volume preferences for free. Because it is the same single track, live audio
+PCM back through the same `VoicePlayerContract` at wire rate (40 ms per frame — the player's queue
+is bounded and fire-and-forget, so a burst would just be dropped there too), which makes history
+respect the speaker/earpiece and volume preferences for free. Because it is the same single track,
+live audio
 outranks history everywhere: `playHistory` refuses while the floor is busy in any direction, and
 an incoming frame, a disconnect, or the floor changing hands — theirs or ours — silences a running
 replay first. The
 id of what is audible lives in `HistoryPlayback.playingId` (a `StateFlow` the controller mirrors
 into `PttState.historyPlayingId`); leaving the history screen lets playback survive going back to
-Main, and deleting the playing row stops it first.
+Main, and deleting the playing row stops it first. Stopping flushes, not just cancels:
+`VoicePlayerContract.stop()` discards the frames the pump already handed over (a cancelled pump
+would otherwise leave ~160 ms of a deleted record buffered in the device — `known-issues.md` #44).
 
 **Desktop and iOS bind `ForegroundProvider { true }`**, so capture is inert there by decision and
 the history screen — reachable, since it lives in the shared `MainScreen` — stays empty.
 
 The five actions (`Open`, `Close`, `PlayRecord`, `StopRecordPlayback`, `DeleteRecord`) get one
 reducer each in `:features:history`; `HistoryState.records`/`playingId` are mirrored in by
-`HistoryViewModel` from `HistoryStore`'s flows and `PttState.historyPlayingId`. The badge is the
+`HistoryViewModel` from `HistoryStore`'s flows and `PttState.historyPlayingId`. Those two fields
+are **async mirrors**, so `onAction` merges a completed action's result instead of assigning it:
+the reducer's value lands only for a mirror field the reducer itself moved relative to the
+dispatch-time snapshot, and a field the collectors advanced while the action was suspended keeps
+the collectors' fresher value — the raw assignment that used to live there rolled the mirrors
+back on every action (`known-issues.md` #44). The badge is the
 one cross-feature fact and does not go through history at all: `:shared`'s `HistoryBadge` derives
 `unread` from `records` + `lastViewedAt` and is injected straight into `:features:main`'s screen
 root, so

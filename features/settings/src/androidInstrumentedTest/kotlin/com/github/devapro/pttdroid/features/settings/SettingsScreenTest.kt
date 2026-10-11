@@ -265,6 +265,40 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun choosing_a_language_relabels_the_screen_without_saving() {
+        // R9: the labels must react to the form's language at once — Save stays the only thing
+        // that can persist anything, so `saved` must still be empty when this passes.
+        show()
+
+        rule.onNodeWithText(string(Res.string.settings_language_ru)).performScrollTo().performClick()
+        rule.runOnIdle { }
+
+        // Resolved *after* the click: getString reads the live process locale, which the screen
+        // has just moved to Russian — this is the Russian section title, whatever it says.
+        val russianTitle = string(Res.string.settings_security).uppercase()
+        rule.onNodeWithText(russianTitle).performScrollTo().assertIsDisplayed()
+        rule.runOnIdle { assertEquals(0, saved.size) }
+    }
+
+    @Test
+    fun an_unsaved_language_choice_is_restored_when_the_screen_leaves() {
+        // The complement of the test above: the live relabel is display-only, so leaving the
+        // screen without Save must hand the process locale back to the entry language.
+        show()
+
+        val entryTitle = string(Res.string.settings_security).uppercase()
+        rule.onNodeWithText(string(Res.string.settings_language_ru)).performScrollTo().performClick()
+        rule.runOnIdle { }
+        val russianTitle = string(Res.string.settings_security).uppercase()
+        rule.onNodeWithText(russianTitle).performScrollTo().assertIsDisplayed()
+
+        rule.onNodeWithText(string(Res.string.settings_language_system)).performScrollTo().performClick()
+        rule.runOnIdle { assertEquals(entryTitle, string(Res.string.settings_security).uppercase()) }
+        rule.onNodeWithText(entryTitle).performScrollTo().assertIsDisplayed()
+        assertEquals(0, saved.size)
+    }
+
+    @Test
     fun the_broadcast_start_bip_can_be_disabled_and_is_saved() {
         show()
 

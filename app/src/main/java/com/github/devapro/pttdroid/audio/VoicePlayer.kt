@@ -44,6 +44,16 @@ import timber.log.Timber
  *
  * `MODE_IN_COMMUNICATION` for the earpiece case *is* a process-wide side effect, which is why
  * [release] undoes it and only if this class was the thing that set it.
+ *
+ * ## Why playback runs through [PlaybackDrainLoop]
+ *
+ * [play] used to call `AudioTrack.write(WRITE_NON_BLOCKING)` straight from the receive path,
+ * with the ~160 ms device buffer as the only slack: an arrival burst after a CPU stall overflowed
+ * the non-blocking write and the excess audio vanished silently — while the history capture fed
+ * from the same frames kept every byte, so users heard gaps live that the stored recording did
+ * not have. [PlaybackDrainLoop] queues the frames off the receive path and writes them in full
+ * from its own thread, and the device buffer is deepened to [DEVICE_BUFFER_FRAMES] so ordinary
+ * network jitter drains frames already handed over instead of starving the speaker.
  */
 class VoicePlayer(context: Context) : VoicePlayerContract {
 
@@ -51,6 +61,9 @@ class VoicePlayer(context: Context) : VoicePlayerContract {
         context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private var audioTrack: AudioTrack? = null
+
+    /** Owns the drain thread feeding [audioTrack]; built with the track in [prepare], torn down in [release]. */
+    private var drainLoop: PlaybackDrainLoop? = null
 
     /**
      * Remembered rather than passed to [prepare]: `AudioAttributes` are immutable once the
@@ -79,7 +92,11 @@ class VoicePlayer(context: Context) : VoicePlayerContract {
 
         applyRoute()
 
-        val bufferSize = maxOf(minBuffer, AudioConfig.FRAME_BYTES * 4)
+        // Deep enough that network jitter drains frames already written to the device rather
+        // than starving the speaker; the queue in PlaybackDrainLoop absorbs arrival bursts behind
+        // it. `stop()` discards what sits here, so a stopped history replay stays exactly as
+        // snappy as before.
+        val bufferSize = maxOf(minBuffer, AudioConfig.FRAME_BYTES * DEVICE_BUFFER_FRAMES)
         val track = try {
             AudioTrack.Builder()
                 .setAudioAttributes(
@@ -119,6 +136,12 @@ class VoicePlayer(context: Context) : VoicePlayerContract {
                 return false
             }
 
+        val drain = PlaybackDrainLoop(
+            sink = PcmWriteSink { buffer, offset, count -> track.write(buffer, offset, count) },
+            maxQueuedBytes = AudioConfig.FRAME_BYTES * DRAIN_QUEUE_FRAMES,
+        )
+        drain.start()
+
         Timber.i(
             "AudioTrack ready: %d Hz, buffer %d bytes, out=%s",
             AudioConfig.SAMPLE_RATE_HZ,
@@ -126,6 +149,7 @@ class VoicePlayer(context: Context) : VoicePlayerContract {
             output,
         )
         audioTrack = track
+        drainLoop = drain
         return true
     }
 
@@ -154,17 +178,41 @@ class VoicePlayer(context: Context) : VoicePlayerContract {
             .onFailure { Timber.w(it, "AudioTrack.setVolume(%f) rejected", clamped) }
     }
 
-    /** Writes one received frame. No logging here — this runs per audio frame. */
+    /**
+     * Hands one received frame to the drain thread; returns without waiting on the device.
+     * No logging here — this runs per audio frame.
+     */
     override fun play(pcm: ByteArray) {
-        if (pcm.isEmpty()) return
+        drainLoop?.enqueue(pcm)
+    }
+
+    /**
+     * Discards everything buffered but not yet played — the frames still queued for the device
+     * and the ~[DEVICE_BUFFER_FRAMES] frames already inside it — so a stopped history replay
+     * goes silent at once instead of trailing the rest of the deleted record.
+     *
+     * `pause()` freezes consumption, `flush()` drops the queued samples, `play()` puts the track
+     * back into the state [prepare] left it in — live audio written after this must still be
+     * audible, and `AudioTrack.write` into a paused track would otherwise pile up unheard.
+     * Idempotent: no-ops before [prepare] or after [release].
+     */
+    override fun stop() {
         val track = audioTrack ?: return
-        runCatching { track.write(pcm, 0, pcm.size, AudioTrack.WRITE_NON_BLOCKING) }
-            .onFailure { Timber.d("AudioTrack.write failed: %s", it.toString()) }
+        drainLoop?.clear()
+        runCatching {
+            track.pause()
+            track.flush()
+            track.play()
+        }.onFailure { Timber.d("AudioTrack stop/flush failed: %s", it.toString()) }
     }
 
     /** Idempotent; safe to call more than once and from either side of a reconnect. */
     override fun release() {
         releaseCommunicationRoute()
+        // Stop feeding the track before tearing it down: queued frames die with the loop, and
+        // [play] on a released player must not enqueue onto a thread writing to a dead track.
+        drainLoop?.shutdown()
+        drainLoop = null
         val track = audioTrack ?: return
         audioTrack = null
         runCatching {
@@ -223,5 +271,17 @@ class VoicePlayer(context: Context) : VoicePlayerContract {
             }
             audioManager.mode = AudioManager.MODE_NORMAL
         }.onFailure { Timber.w(it, "Could not restore the normal audio mode") }
+    }
+
+    private companion object {
+        /** ~400 ms of device slack — comfortably beyond ordinary network jitter. */
+        const val DEVICE_BUFFER_FRAMES = 10
+
+        /**
+         * ~1.6 s of queue slack, sized to swallow the connection's whole 64-frame backlog
+         * (its `DROP_OLDEST` shared flow) after a receive-path stall without dropping audio.
+         * Deeper than this, and a listener catches up on stale talkspurts instead of the live one.
+         */
+        const val DRAIN_QUEUE_FRAMES = 40
     }
 }

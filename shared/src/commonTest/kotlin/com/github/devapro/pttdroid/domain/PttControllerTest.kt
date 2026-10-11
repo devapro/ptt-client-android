@@ -41,6 +41,9 @@ class PttControllerTest {
         var connectCalls = 0
         var acceptsAudio = true
 
+        /** False models a transport with no live session: control sends fail outright. */
+        var acceptControls = true
+
         /** Rejects exactly this many subsequent `sendAudio` calls, then goes back to accepting —
          *  models a relay hiccup on the bip preamble that clears up before real audio starts. */
         var failNextAudioSends = 0
@@ -57,8 +60,10 @@ class PttControllerTest {
 
         override suspend fun disconnect() = Unit
 
-        override suspend fun send(message: ClientMessage) {
+        override suspend fun send(message: ClientMessage): Boolean {
+            if (!acceptControls) return false
             sent += message
+            return true
         }
 
         override suspend fun sendAudio(pcm: ByteArray): Boolean {
@@ -96,6 +101,7 @@ class PttControllerTest {
             return prepareSucceeds
         }
         override fun play(pcm: ByteArray) { played += pcm }
+        override fun stop() = Unit
         override fun setOutput(output: com.github.devapro.pttdroid.data.settings.AudioOutput) {
             lastOutput = output
         }

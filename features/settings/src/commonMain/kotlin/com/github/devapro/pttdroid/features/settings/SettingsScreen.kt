@@ -37,6 +37,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import org.jetbrains.compose.resources.painterResource
@@ -49,6 +52,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.LanguageMode
+import com.github.devapro.pttdroid.data.settings.applyLanguagePreference
 import com.github.devapro.pttdroid.data.settings.ServerAddress
 import com.github.devapro.pttdroid.data.settings.ServerMode
 import com.github.devapro.pttdroid.data.settings.ThemeMode
@@ -97,6 +101,52 @@ fun SettingsScreen(
     // host only renders this branch once OpenSettingsReducer has seeded it, and renders
     // nothing in its place otherwise — never a half-rendered form.
     val form = state.form ?: return
+
+    // R9: the language chosen in the still-unsaved form relabels this screen immediately,
+    // without Save and without touching persistence.
+    //
+    // `stringResource()` resolves against the process default locale, but every lookup here
+    // caches its last resolution (and the whole screen is a pure function of the state, so a
+    // language edit invalidates nothing on its own) — the label refresh therefore needs both
+    // levers, applied during composition rather than from a `LaunchedEffect`, exactly like the
+    // host roots (`desktopApp/Main.kt`, `:ui-shell`'s `App.kt`) apply a *persisted* change:
+    //   1. `applyLanguagePreference` swaps the locale the string tables resolve against;
+    //   2. `key(displayLanguage)` discards and re-composes the screen subtree, so every
+    //      `stringResource` call below re-runs instead of reusing its cached string.
+    // A discarded subtree is safe here precisely because nothing lives in it: the values are all
+    // in `form`. On leaving the screen — closed unsaved, or saved — the `onDispose` restores the
+    // language this screen was entered with, so a never-saved choice can never leak into the
+    // rest of the app; a saved change then lands through the persisted path (Android
+    // `recreate()`, desktop/iOS `key(language)` at the root) as before. On iOS
+    // `applyLanguagePreference` only takes effect at next launch (no runtime locale lever —
+    // see its iosMain actual), so the labels there keep waiting for the restart.
+    val displayLanguage = form.languageMode
+    val entryLanguage = remember { displayLanguage }
+    remember(displayLanguage) { applyLanguagePreference(displayLanguage) }
+    DisposableEffect(Unit) {
+        onDispose { applyLanguagePreference(entryLanguage) }
+    }
+
+    key(displayLanguage) {
+        SettingsScreenContent(
+            form = form,
+            canDrawOverlay = state.canDrawOverlay,
+            canHostRelay = canHostRelay,
+            onAction = onAction,
+            modifier = modifier,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsScreenContent(
+    form: SettingsFormState,
+    canDrawOverlay: Boolean,
+    canHostRelay: Boolean,
+    onAction: (SettingsAction) -> Unit,
+    modifier: Modifier,
+) {
     val endpointUrl = form.toSettings().displayUrl()
 
     Scaffold(
@@ -208,7 +258,7 @@ fun SettingsScreen(
 
             HandsFreeSection(
                 floatingButtonEnabled = form.floatingButtonEnabled,
-                canDrawOverlay = state.canDrawOverlay,
+                canDrawOverlay = canDrawOverlay,
                 hostServerEnabled = form.hostServerEnabled,
                 canHostRelay = canHostRelay,
                 onAction = onAction,

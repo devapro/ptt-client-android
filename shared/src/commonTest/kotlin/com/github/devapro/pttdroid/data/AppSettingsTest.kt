@@ -81,6 +81,36 @@ class AppSettingsTest {
     }
 
     @Test
+    fun `a padded over-long name is trimmed before it is truncated`() {
+        // Spec order (protocol.md): trimmed, then truncated to 32. The old take-then-server-
+        // trims order spent 5 of the 32 chars on the leading padding, so the name that
+        // survived the server's own trim was 5 chars shorter than what the user typed.
+        val name = "     " + "a".repeat(30) + "bbbbb"
+        val url = AppSettings(displayName = name).webSocketUrl()
+        val sent = url.substringAfter("name=").substringBefore("&")
+        assertEquals("a".repeat(30) + "bb", sent)
+    }
+
+    @Test
+    fun `trailing padding is trimmed before an over-long name is truncated`() {
+        // Same order, other side: trim-then-take gives the full 32-char window to the
+        // trimmed body, so 32 z's must reach the wire, no padding.
+        val sent = AppSettings(displayName = "  " + "z".repeat(40) + "  ")
+            .webSocketUrl()
+            .substringAfter("name=")
+            .substringBefore("&")
+        assertEquals("z".repeat(32), sent)
+    }
+
+    @Test
+    fun `a padded short name is encoded trimmed so the server sees no padding`() {
+        // The encode must see the trimmed string: outer padding must not reach the wire as
+        // '+'/%20, while an interior space keeps its encoding.
+        val url = AppSettings(displayName = "   Ann Lee   ").webSocketUrl()
+        assertTrue(url.endsWith("name=Ann+Lee&v=1"), "got $url")
+    }
+
+    @Test
     fun `a unicode name survives encoding`() {
         val url = AppSettings(displayName = "Ann–Bö").webSocketUrl()
         assertTrue(url.contains("name=Ann%E2%80%93B%C3%B6"), "expected percent-encoding, got $url")

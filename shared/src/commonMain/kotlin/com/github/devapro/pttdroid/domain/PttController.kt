@@ -155,7 +155,16 @@ class PttController(
         val current = _state.value
         if (!current.canTalk || current.isTransmitting || current.isRequestingFloor) return
         _state.update { it.copy(isRequestingFloor = true) }
-        scope.launch { connection.send(TalkRequest) }
+        scope.launch {
+            // The send reports whether the frame reached the wire. A null session used to fail
+            // silently here, leaving `isRequestingFloor` set with no request outstanding — the
+            // UI sat waiting and retries were blocked until the next disconnect or a gesture
+            // release. Roll the optimistic flag back on failure instead.
+            if (!connection.send(TalkRequest)) {
+                stopTransmit()
+                _state.update { it.copy(isRequestingFloor = false, isTransmitting = false) }
+            }
+        }
     }
 
     fun releaseTalk() {
@@ -362,8 +371,14 @@ class PttController(
 
             is ProtocolError -> {
                 PttLog.w { "Protocol error ${message.code}: ${message.message}" }
-                if (message.code == ErrorCodes.FLOOR_BUSY) {
-                    // Someone beat us to it; make sure we are not left half-transmitting.
+                if (message.code == ErrorCodes.FLOOR_BUSY ||
+                    message.code == ErrorCodes.NOT_FLOOR_HOLDER
+                ) {
+                    // Either code is the server stating authoritatively that the floor is not
+                    // ours: FLOOR_BUSY answers a request we never got, NOT_FLOOR_HOLDER arrives
+                    // when we send audio it believes we do not hold the floor — a contradiction
+                    // with our own transmitting state, and the server is the arbiter. Make sure
+                    // we are not left half-transmitting or stranded on a pending request.
                     stopTransmit()
                     _state.update { it.copy(isRequestingFloor = false, isTransmitting = false) }
                 }

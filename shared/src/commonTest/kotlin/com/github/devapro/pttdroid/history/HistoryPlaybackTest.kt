@@ -23,6 +23,7 @@ class HistoryPlaybackTest {
     private class RecordingPlayer : VoicePlayerContract {
         var prepared = 0
         var prepareSucceeds = true
+        var stops = 0
         val played = mutableListOf<ByteArray>()
         override fun prepare(): Boolean {
             prepared++
@@ -31,6 +32,10 @@ class HistoryPlaybackTest {
 
         override fun play(pcm: ByteArray) {
             played += pcm
+        }
+
+        override fun stop() {
+            stops++
         }
 
         override fun setOutput(output: AudioOutput) = Unit
@@ -100,6 +105,11 @@ class HistoryPlaybackTest {
             playback.stop()
 
             assertEquals(1, player.played.size, "the frame already handed over cannot be recalled")
+            assertEquals(
+                1,
+                player.stops,
+                "stop must flush the player too — the buffered tail is what the user would still hear",
+            )
             assertEquals(null, playback.playingId.value)
             assertFalse(playback.isPlaying)
 

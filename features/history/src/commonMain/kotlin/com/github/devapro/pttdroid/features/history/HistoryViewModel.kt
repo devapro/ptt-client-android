@@ -72,8 +72,30 @@ class HistoryViewModel(
 
     override fun onAction(action: HistoryAction) {
         viewModelScope.launch {
-            val result = actionProcessor.process(action, _state.value)
-            _state.value = result.state
+            val snapshot = _state.value
+            val result = actionProcessor.process(action, snapshot)
+            // Merge, never clobber: `result.state` was built from the dispatch-time [snapshot],
+            // but `reduce` suspends (store lookups, deletes), and the `init` collectors keep
+            // writing fresher `records`/`playingId` into `_state` throughout. A raw assignment
+            // here used to roll those async mirrors back — a deleted row reappearing in the open
+            // list, a stopped/stale playing badge — until the next unrelated emission happened to
+            // correct them (QA finding H14). The rule: a mirror field takes the reducer's value
+            // only if the reducer *moved* it relative to what it was handed (e.g. DeleteRecord's
+            // local row removal — that is why the delete reducer filters `records` itself rather
+            // than waiting for the store re-emission); a field the collectors advanced while the
+            // action was in flight keeps the collectors' fresher value. The collectors and the
+            // store both converge to the same truth shortly after, so neither branch can strand
+            // a field: the merge only decides which of two already-correct values is shown now.
+            _state.update { current ->
+                result.state.copy(
+                    records =
+                        if (current.records !== snapshot.records) current.records
+                        else result.state.records,
+                    playingId =
+                        if (current.playingId != snapshot.playingId) current.playingId
+                        else result.state.playingId,
+                )
+            }
             result.event?.let { _event.trySend(it) }
             result.action?.let { onAction(it) }
         }

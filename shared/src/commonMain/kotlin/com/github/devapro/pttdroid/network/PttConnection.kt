@@ -36,8 +36,12 @@ interface PttConnection {
 
     suspend fun disconnect()
 
-    /** Sends one control message as a text frame. */
-    suspend fun send(message: ClientMessage)
+    /**
+     * Sends one control message as a text frame. Returns false if it could not reach the wire
+     * — no live session, or the write failed — so callers that changed state in anticipation of
+     * the send (a pending floor request) can roll that state back instead of stranding it.
+     */
+    suspend fun send(message: ClientMessage): Boolean
 
     /** Sends one audio frame as a binary frame. Returns false if not currently connected. */
     suspend fun sendAudio(pcm: ByteArray): Boolean

@@ -202,8 +202,19 @@ private fun formatStamp(record: VoiceRecord, timeZone: TimeZone, today: LocalDat
     }
 }
 
-private fun formatDuration(durationMs: Long): String {
-    val totalSeconds = durationMs / 1000
+/**
+ * `mm:ss` for a record's duration, rounded to the **nearest second** (half rounds up).
+ *
+ * Rounding, not truncation, is the fix for the 2-minute cap reading "1:59": a capped record is
+ * a whole number of 40 ms wire frames ([BackgroundRecordCapture] caps at frame granularity), and
+ * the last frame can leave `durationMs` a few hundred ms under 120 000 (e.g. 119 960), which
+ * truncation rendered one second short of the truth. Rounding to the nearest second also means
+ * sub-second records round the same way everywhere: 0.4 s → "0:00", 0.5 s → "0:01" (half up).
+ *
+ * `internal` for the commonTest contract pinned in `HistoryDurationFormatTest`.
+ */
+internal fun formatDuration(durationMs: Long): String {
+    val totalSeconds = (durationMs + 500) / 1000
     return "${totalSeconds / 60}:${pad(totalSeconds % 60, 2)}"
 }
 

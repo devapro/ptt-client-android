@@ -156,10 +156,13 @@ class KtorPttConnection : PttConnection {
             .onFailure { PttLog.d { "Close failed: $it" } }
     }
 
-    override suspend fun send(message: ClientMessage) {
-        val active = sessionLock.withLock { session } ?: return
-        runCatching { active.send(Frame.Text(message.encode())) }
-            .onFailure { PttLog.d { "Control send failed: $it" } }
+    override suspend fun send(message: ClientMessage): Boolean {
+        val active = sessionLock.withLock { session } ?: return false
+        return runCatching { active.send(Frame.Text(message.encode())); true }
+            .getOrElse {
+                PttLog.d { "Control send failed: $it" }
+                false
+            }
     }
 
     override suspend fun sendAudio(pcm: ByteArray): Boolean {

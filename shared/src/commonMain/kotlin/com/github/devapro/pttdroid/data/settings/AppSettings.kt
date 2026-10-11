@@ -110,11 +110,15 @@ data class AppSettings(
         fun clampVolume(value: Float): Float =
             if (value.isNaN()) DEFAULT_PLAYBACK_VOLUME else value.coerceIn(VOLUME_RANGE)
 
+        // Spec order (protocol.md): the server trims `name`, then truncates to 32. Truncating
+        // first would spend the 32-char budget on leading padding the server then throws away,
+        // silently shortening what the user sees peers call them. Encode the trimmed name.
+        //
         // `spaceToPlus = true` matches java.net.URLEncoder.encode(name, "UTF-8")'s
         // application/x-www-form-urlencoded behaviour byte-for-byte (space -> '+', everything
         // else percent-encoded with uppercase hex) for every case the tests cover — see the
         // Phase 2 migration report for the one untested edge case ('*'/'~') where they diverge.
         private fun encodeName(name: String): String =
-            name.take(MAX_NAME_LENGTH).encodeURLParameter(spaceToPlus = true)
+            name.trim().take(MAX_NAME_LENGTH).encodeURLParameter(spaceToPlus = true)
     }
 }

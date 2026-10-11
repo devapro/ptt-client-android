@@ -34,12 +34,14 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 
 /**
- * The history screen's five reducers — all nine cases kept.
+ * The history screen's five reducers.
  *
  * The two that only move state around ([HistoryAction.Open] / [HistoryAction.Close]) are
  * exercised alone; the three that talk to the session run against a real [PttController] over
  * transport stubs that never dial anything — the point is exactly that the reducers reach the
- * controller (and the store) and nothing more, so the fake end of the wire can be inert.
+ * controller (and the store) and nothing more, so the fake end of the wire can be inert. The
+ * [HistoryAction.DeleteRecord] group covers the H14 fix: the stop decision reads the
+ * controller's live playing id, not the mirror, and the returned state drops the row locally.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class HistoryReducersTest {
@@ -48,7 +50,7 @@ class HistoryReducersTest {
         override val events: Flow<ConnectionEvent> = MutableSharedFlow()
         override suspend fun connect(endpoint: PttEndpoint) = awaitCancellation()
         override suspend fun disconnect() = Unit
-        override suspend fun send(message: ClientMessage) = Unit
+        override suspend fun send(message: ClientMessage): Boolean = true
         override suspend fun sendAudio(pcm: ByteArray): Boolean = true
     }
 
@@ -61,6 +63,7 @@ class HistoryReducersTest {
 
     private class StubPlayer : VoicePlayerContract {
         var prepared = 0
+        var stops = 0
         val played = mutableListOf<ByteArray>()
         override fun prepare(): Boolean {
             prepared++
@@ -69,6 +72,10 @@ class HistoryReducersTest {
 
         override fun play(pcm: ByteArray) {
             played += pcm
+        }
+
+        override fun stop() {
+            stops++
         }
 
         override fun setOutput(output: AudioOutput) = Unit
@@ -229,16 +236,20 @@ class HistoryReducersTest {
     // --- DeleteRecord --------------------------------------------------------------------------
 
     @Test
-    fun `DeleteRecord removes the record from the store`() =
+    fun `DeleteRecord removes the record from the store and from the returned state`() =
         runTest(UnconfinedTestDispatcher()) {
             val fixture = Fixture(backgroundScope)
             val record = fixture.record()
             val reducer = DeleteRecordReducer(fixture.controller, fixture.store)
+            // The dispatch-time mirror still carries the row — the reducer's local removal is
+            // what lets the open list drop it without waiting for the store's async re-emission.
+            val state = HistoryState(records = fixture.store.recordsNow())
 
-            reducer.reduce(HistoryAction.DeleteRecord(record.id), HistoryState())
+            val result = reducer.reduce(HistoryAction.DeleteRecord(record.id), state)
 
             assertTrue(fixture.store.recordsNow().isEmpty())
             assertTrue(fixture.store.files.isEmpty(), "the file goes with the index entry")
+            assertTrue(result.state.records.isEmpty(), "the row is removed from the state too")
         }
 
     @Test
@@ -253,9 +264,49 @@ class HistoryReducersTest {
             // The playing-id mirror HistoryViewModel keeps from the controller — this is the
             // field the old `state.ptt.historyPlayingId` read became.
             val state = HistoryState(playingId = fixture.controller.state.value.historyPlayingId)
-            reducer.reduce(HistoryAction.DeleteRecord(record.id), state)
+            val result = reducer.reduce(HistoryAction.DeleteRecord(record.id), state)
 
             assertTrue(fixture.store.recordsNow().isEmpty())
             assertNull(fixture.controller.state.value.historyPlayingId)
+            assertEquals(1, fixture.player.stops, "stop must flush the player, not just cancel")
+            assertNull(result.state.playingId, "the returned state already says stopped")
+        }
+
+    @Test
+    fun `deleting a playing record stops it even when the mirrored playingId is stale`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // H14's exact shape: the replay started but the PttState → HistoryState mirror has
+            // not caught up (or was rolled back), so `state.playingId` is null while the row is
+            // audibly playing. The stop decision reads the controller, not the mirror.
+            val fixture = Fixture(backgroundScope)
+            val record = fixture.record()
+            PlayRecordReducer(fixture.controller, fixture.store)
+                .reduce(HistoryAction.PlayRecord(record.id), HistoryState())
+            val reducer = DeleteRecordReducer(fixture.controller, fixture.store)
+
+            reducer.reduce(HistoryAction.DeleteRecord(record.id), HistoryState(playingId = null))
+
+            assertNull(fixture.controller.state.value.historyPlayingId)
+            assertEquals(1, fixture.player.stops)
+        }
+
+    @Test
+    fun `deleting a record that is not the playing one leaves the replay alone`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val fixture = Fixture(backgroundScope)
+            val playing = fixture.record("r1")
+            val other = fixture.record("r2")
+            PlayRecordReducer(fixture.controller, fixture.store)
+                .reduce(HistoryAction.PlayRecord(playing.id), HistoryState())
+            val reducer = DeleteRecordReducer(fixture.controller, fixture.store)
+
+            reducer.reduce(
+                HistoryAction.DeleteRecord(other.id),
+                HistoryState(records = listOf(other), playingId = playing.id),
+            )
+
+            assertEquals(playing.id, fixture.controller.state.value.historyPlayingId)
+            assertEquals(0, fixture.player.stops, "nothing was flushed — the replay goes on")
+            assertTrue(fixture.store.recordsNow().map { it.id } == listOf(playing.id))
         }
 }
