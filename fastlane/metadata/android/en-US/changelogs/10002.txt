@@ -1,0 +1,6 @@
+* Message history
+* Multi-language interface
+* Bip signal is now broadcast to everyone on the channel
+* More reliable reconnect, and fixed volume handling
+* Fixed an issue when several users were connected
+* Reworked settings screen
