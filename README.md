@@ -157,6 +157,7 @@ its window is open, and the iOS build for as long as its audio session survives 
 | Surface | Gesture | Notes |
 |---|---|---|
 | **Floating bubble** | Hold to talk, drag to move | Real press-and-hold. Shows the channel number and a microphone, struck through when a press would do nothing. Hidden while the app itself is on screen |
+| **Volume keys / headset button** | Hold to talk (opt-in setting) | Volume keys while the app is on screen; the headset's media button anywhere the session runs. Some headsets send only a click, giving a short transmission |
 | **Notification** | Tap **Talk** / **Stop** | Present whenever the session is running |
 | **Home-screen widget** | Tap to toggle, −/+ for channel | Toggle only — RemoteViews deliver clicks, never touch-down/up, so hold-to-talk is not expressible in a widget |
 

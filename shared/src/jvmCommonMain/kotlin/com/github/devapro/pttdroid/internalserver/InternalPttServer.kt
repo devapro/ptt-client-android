@@ -41,6 +41,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
+import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -106,6 +108,13 @@ class InternalPttServer {
     ) {
         synchronized(lifecycleLock) {
             if (engine != null) return // double-start guard
+            // CIO binds on a background coroutine, so a refused bind (a privileged port below
+            // 1024, or one already in use) would surface as an uncaught exception and kill the
+            // process instead of failing this call. Probe the port first so the caller sees it.
+            ServerSocket().use { probe ->
+                probe.reuseAddress = true
+                probe.bind(InetSocketAddress(port))
+            }
             val config = Config(port, accessToken, maxSessionsPerChannel)
             runningConfig = config
             val server = embeddedServer(CIO, port = port, host = "0.0.0.0") {

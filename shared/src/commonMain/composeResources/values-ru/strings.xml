@@ -107,6 +107,8 @@
 
     <string name="settings_hands_free">Свободные руки</string>
     <string name="settings_floating">Плавающая кнопка PTT</string>
+    <string name="settings_hardware_buttons">Кнопки громкости и гарнитуры</string>
+    <string name="settings_hardware_buttons_summary">Удерживайте клавишу громкости (приложение открыто) или кнопку гарнитуры, чтобы говорить; отпустите, чтобы закончить</string>
     <string name="settings_floating_summary">Показывать перетаскиваемую кнопку разговора поверх других приложений</string>
     <string name="settings_grant_overlay">Разрешить «поверх других приложений»</string>
     <string name="settings_overlay_required">Для отображения плавающей кнопки нужно разрешение</string>

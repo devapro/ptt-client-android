@@ -8,13 +8,16 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -176,6 +179,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val settings by settingsRepository.settings.collectAsState(initial = initialSettings)
+            hardwareButtons = settings.hardwareButtonsEnabled
 
             // Seeded from initialSettings.languageMode — the same value collectAsState's initial
             // just rendered — so the first composition always agrees with itself. See
@@ -188,7 +192,27 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            PTTdroidTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
+            val darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())
+            // The bar icons follow the app's theme, not the system's: a Light app theme on a
+            // dark system would otherwise keep white icons on a near-white background.
+            DisposableEffect(darkTheme) {
+                val transparent = android.graphics.Color.TRANSPARENT
+                enableEdgeToEdge(
+                    statusBarStyle = if (darkTheme) {
+                        SystemBarStyle.dark(transparent)
+                    } else {
+                        SystemBarStyle.light(transparent, transparent)
+                    },
+                    navigationBarStyle = if (darkTheme) {
+                        SystemBarStyle.dark(transparent)
+                    } else {
+                        SystemBarStyle.light(transparent, transparent)
+                    },
+                )
+                onDispose {}
+            }
+
+            PTTdroidTheme(darkTheme = darkTheme) {
                 // The STARTED gate the deleted collectEvents() carried, restored on the delivery
                 // side instead of the collection side: the per-screen collectors in
                 // rememberPttUiEvents must keep draining the view models' buffered channels while
@@ -229,6 +253,30 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    /** Mirrors [AppSettings.hardwareButtonsEnabled] for [onKeyDown]/[onKeyUp], which cannot suspend. */
+    @Volatile
+    private var hardwareButtons = false
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (hardwareButtons && isVolumeKey(keyCode)) {
+            // Repeats are swallowed too, or holding the key would raise the volume after all.
+            if (event.repeatCount == 0) mainViewModel.onAction(MainAction.Speak)
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (hardwareButtons && isVolumeKey(keyCode)) {
+            mainViewModel.onAction(MainAction.StopSpeak)
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
+    private fun isVolumeKey(keyCode: Int) =
+        keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
 
     override fun onStart() {
         super.onStart()

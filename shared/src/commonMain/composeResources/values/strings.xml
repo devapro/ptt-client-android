@@ -113,6 +113,8 @@
 
     <string name="settings_hands_free">Hands-free</string>
     <string name="settings_floating">Floating PTT button</string>
+    <string name="settings_hardware_buttons">Volume keys and headset button</string>
+    <string name="settings_hardware_buttons_summary">Hold a volume key (app open) or the headset button to talk, release to stop</string>
     <string name="settings_floating_summary">Show a draggable talk button over other apps</string>
     <string name="settings_grant_overlay">Grant “draw over other apps”</string>
     <string name="settings_overlay_required">Permission needed to show the floating button</string>

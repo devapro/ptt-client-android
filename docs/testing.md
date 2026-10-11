@@ -143,6 +143,12 @@ used, and what to look for:
    to skip the permission screen), press HOME, and confirm the bubble draws over the launcher. Hold
    it to talk — it should turn red, the system microphone privacy indicator should appear, and the
    peer should see the transmission. Drag it and confirm the position survives.
+6b. **Volume keys / headset**: enable **Volume keys and headset button** in Settings. With the app
+   open, `adb shell input keyevent --longpress KEYCODE_VOLUME_UP` should start a transmission and
+   the volume must not change (a real hold is the better test: release should stop it). For the
+   headset path, press HOME, then pair a Bluetooth headset or send
+   `adb shell input keyevent KEYCODE_HEADSETHOOK`; confirm the peer hears it and
+   `dumpsys media_session` lists `ptt-headset` as active. Turn the setting off and confirm both stop.
 7. **Widget**: long-press the home screen → Widgets → PTTdroid → drag it out. Confirm it shows live
    status, then tap TALK and confirm the peer sees it and the widget flips to "Talking"/"STOP".
 8. **Reconnect**: kill the server. Logcat should show growing jittered delays

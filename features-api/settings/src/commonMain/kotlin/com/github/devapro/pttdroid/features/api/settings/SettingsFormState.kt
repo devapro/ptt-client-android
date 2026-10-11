@@ -30,6 +30,7 @@ data class SettingsFormState(
     val channel: String,
     val broadcastStartBipEnabled: Boolean,
     val floatingButtonEnabled: Boolean,
+    val hardwareButtonsEnabled: Boolean = false,
     val hostServerEnabled: Boolean,
     val themeMode: ThemeMode,
     val languageMode: LanguageMode,
@@ -70,6 +71,7 @@ data class SettingsFormState(
         channel = channelValue ?: stored.channel,
         broadcastStartBipEnabled = broadcastStartBipEnabled,
         floatingButtonEnabled = floatingButtonEnabled,
+        hardwareButtonsEnabled = hardwareButtonsEnabled,
         hostServerEnabled = hostServerEnabled,
         themeMode = themeMode,
         languageMode = languageMode,
@@ -80,7 +82,12 @@ data class SettingsFormState(
 
     /** Applies one field change. The single point [EditSettingsReducer] delegates to. */
     fun apply(edit: SettingsEdit): SettingsFormState = when (edit) {
-        is SettingsEdit.Mode -> copy(serverMode = edit.value)
+        // Back on Default, the scheme returns to what the build ships: an "Encrypted connection"
+        // switch left off under a custom relay would otherwise dial ws:// at the default's port.
+        is SettingsEdit.Mode -> copy(
+            serverMode = edit.value,
+            useTls = if (edit.value.isCustom) useTls else AppSettings.DEFAULT_TLS,
+        )
         is SettingsEdit.Address -> copy(address = edit.value)
         is SettingsEdit.DisplayName -> copy(displayName = edit.value)
         // Digits only, capped at two: the channel range never needs a third digit and letters
@@ -88,6 +95,7 @@ data class SettingsFormState(
         is SettingsEdit.Channel -> copy(channel = edit.value.filter(Char::isDigit).take(2))
         is SettingsEdit.BroadcastStartBip -> copy(broadcastStartBipEnabled = edit.enabled)
         is SettingsEdit.FloatingButton -> copy(floatingButtonEnabled = edit.enabled)
+        is SettingsEdit.HardwareButtons -> copy(hardwareButtonsEnabled = edit.enabled)
         is SettingsEdit.HostServer -> copy(hostServerEnabled = edit.enabled)
         is SettingsEdit.Theme -> copy(themeMode = edit.value)
         is SettingsEdit.Language -> copy(languageMode = edit.value)
@@ -114,6 +122,7 @@ data class SettingsFormState(
             channel = settings.channel.toString(),
             broadcastStartBipEnabled = settings.broadcastStartBipEnabled,
             floatingButtonEnabled = settings.floatingButtonEnabled,
+            hardwareButtonsEnabled = settings.hardwareButtonsEnabled,
             hostServerEnabled = settings.hostServerEnabled,
             themeMode = settings.themeMode,
             languageMode = settings.languageMode,

@@ -23,6 +23,7 @@ sealed interface SettingsEdit {
     data class Channel(val value: String) : SettingsEdit
     data class BroadcastStartBip(val enabled: Boolean) : SettingsEdit
     data class FloatingButton(val enabled: Boolean) : SettingsEdit
+    data class HardwareButtons(val enabled: Boolean) : SettingsEdit
     data class HostServer(val enabled: Boolean) : SettingsEdit
     data class Theme(val value: ThemeMode) : SettingsEdit
     data class Language(val value: LanguageMode) : SettingsEdit

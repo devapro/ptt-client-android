@@ -96,6 +96,8 @@ fun SettingsScreen(
     // domain/PlatformCapabilities.kt — InternalPttServer (the thing this setting turns on) has no
     // iOS actual at all.
     canHostRelay: Boolean = com.github.devapro.pttdroid.domain.canHostRelay,
+    canShowFloatingButton: Boolean = com.github.devapro.pttdroid.domain.canShowFloatingButton,
+    canUseHardwareButtons: Boolean = com.github.devapro.pttdroid.domain.canUseHardwareButtons,
 ) {
     // The form exists exactly while the Settings screen is up (see SettingsState.form); the
     // host only renders this branch once OpenSettingsReducer has seeded it, and renders
@@ -132,6 +134,8 @@ fun SettingsScreen(
             form = form,
             canDrawOverlay = state.canDrawOverlay,
             canHostRelay = canHostRelay,
+            canShowFloatingButton = canShowFloatingButton,
+            canUseHardwareButtons = canUseHardwareButtons,
             onAction = onAction,
             modifier = modifier,
         )
@@ -144,6 +148,8 @@ private fun SettingsScreenContent(
     form: SettingsFormState,
     canDrawOverlay: Boolean,
     canHostRelay: Boolean,
+    canShowFloatingButton: Boolean,
+    canUseHardwareButtons: Boolean,
     onAction: (SettingsAction) -> Unit,
     modifier: Modifier,
 ) {
@@ -256,13 +262,18 @@ private fun SettingsScreenContent(
                 onAction = onAction,
             )
 
-            HandsFreeSection(
-                floatingButtonEnabled = form.floatingButtonEnabled,
-                canDrawOverlay = canDrawOverlay,
-                hostServerEnabled = form.hostServerEnabled,
-                canHostRelay = canHostRelay,
-                onAction = onAction,
-            )
+            if (canShowFloatingButton || canHostRelay || canUseHardwareButtons) {
+                HandsFreeSection(
+                    floatingButtonEnabled = form.floatingButtonEnabled,
+                    canDrawOverlay = canDrawOverlay,
+                    hostServerEnabled = form.hostServerEnabled,
+                    canHostRelay = canHostRelay,
+                    canShowFloatingButton = canShowFloatingButton,
+                    hardwareButtonsEnabled = form.hardwareButtonsEnabled,
+                    canUseHardwareButtons = canUseHardwareButtons,
+                    onAction = onAction,
+                )
+            }
         }
         }
     }
@@ -530,19 +541,34 @@ private fun HandsFreeSection(
     canDrawOverlay: Boolean,
     hostServerEnabled: Boolean,
     canHostRelay: Boolean,
+    canShowFloatingButton: Boolean,
+    hardwareButtonsEnabled: Boolean,
+    canUseHardwareButtons: Boolean,
     onAction: (SettingsAction) -> Unit,
 ) {
     SectionCard(title = stringResource(Res.string.settings_hands_free)) {
-        ToggleRow(
-            title = stringResource(Res.string.settings_floating),
-            summary = stringResource(Res.string.settings_floating_summary),
-            checked = floatingButtonEnabled,
-            onCheckedChange = { onAction(SettingsAction.EditSettings(SettingsEdit.FloatingButton(it))) },
-        )
+        // Hidden where there is no overlay window to draw it in (desktop, iOS).
+        if (canShowFloatingButton) {
+            ToggleRow(
+                title = stringResource(Res.string.settings_floating),
+                summary = stringResource(Res.string.settings_floating_summary),
+                checked = floatingButtonEnabled,
+                onCheckedChange = { onAction(SettingsAction.EditSettings(SettingsEdit.FloatingButton(it))) },
+            )
+        }
+
+        if (canUseHardwareButtons) {
+            ToggleRow(
+                title = stringResource(Res.string.settings_hardware_buttons),
+                summary = stringResource(Res.string.settings_hardware_buttons_summary),
+                checked = hardwareButtonsEnabled,
+                onCheckedChange = { onAction(SettingsAction.EditSettings(SettingsEdit.HardwareButtons(it))) },
+            )
+        }
 
         // "Draw over other apps" is a special permission: it cannot be granted from a
         // runtime dialog, only from a Settings screen we send the user to.
-        if (floatingButtonEnabled && !canDrawOverlay) {
+        if (canShowFloatingButton && floatingButtonEnabled && !canDrawOverlay) {
             Text(
                 text = stringResource(Res.string.settings_overlay_required),
                 style = MaterialTheme.typography.bodySmall,

@@ -71,6 +71,14 @@ overlap with.
 - **The on-device relay is plaintext only.** Turning on encryption while hosting locally is
   called out in Settings, but the embedded relay does not serve `wss://` — generating and
   managing a keystore on a handset is a lot for what it buys.
+- **Headset PTT depends on the headset.** The headset button is read through a `MediaSession`
+  (`PttForegroundService.syncHeadsetButton`); hold-to-talk needs the headset to send key-down and
+  key-up separately. One that sends both at once on a click gives a very short transmission — a
+  tap-to-toggle mode would be the fix. Volume keys only work with the app on screen; the screen-off
+  case needs an accessibility service and is deliberately not used.
+- **Switching Relay back to Default restores the build's scheme** (`SettingsFormState`, `Mode`
+  edit): the "Encrypted connection" switch is reset to `AppSettings.DEFAULT_TLS`, so a switch left
+  off under a custom relay does not leave Default dialing `ws://` at the default's port.
 - **No audio compression.** Raw 16 kHz mono PCM is ~32 kB/s. Fine on a LAN, wasteful over the
   internet — Opus would be the natural next step, and would need a protocol version bump.
 - **No public test server**, which is what makes **Relay → Default** thin in *this* build: the

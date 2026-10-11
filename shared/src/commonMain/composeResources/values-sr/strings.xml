@@ -106,6 +106,8 @@
 
     <string name="settings_hands_free">Слободне руке</string>
     <string name="settings_floating">Плутајуће PTT дугме</string>
+    <string name="settings_hardware_buttons">Тастери јачине звука и слушалице</string>
+    <string name="settings_hardware_buttons_summary">Држите тастер јачине звука (апликација отворена) или дугме слушалица да говорите, пустите да завршите</string>
     <string name="settings_floating_summary">Прикажи дугме за говор које се може превлачити преко других апликација</string>
     <string name="settings_grant_overlay">Дозволи „приказ преко других апликација”</string>
     <string name="settings_overlay_required">Потребна дозвола за приказ плутајућег дугмета</string>

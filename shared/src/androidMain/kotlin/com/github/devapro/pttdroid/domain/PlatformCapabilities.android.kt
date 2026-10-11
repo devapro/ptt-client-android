@@ -8,3 +8,7 @@ package com.github.devapro.pttdroid.domain
  * desktop — the other target that compiles `jvmCommonMain` — answers this one differently.
  */
 actual val canRouteAudioOutput: Boolean = true
+
+actual val canShowFloatingButton: Boolean = true
+
+actual val canUseHardwareButtons: Boolean = true

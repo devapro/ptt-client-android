@@ -67,9 +67,13 @@ a snackbar.
   Android and desktop the change takes effect immediately; on iOS, best-effort and
   runtime-unverified, it is expected to take effect on the next launch rather than the current
   one — see `platform-support.md`.
-- **Hands-free** — the floating PTT button toggle, with a hand-off to the system "draw over other
-  apps" screen when the permission is missing, and **Host a relay on this device**, which runs the
-  server in-app so no separate machine is needed.
+- **Hands-free** — on Android, the floating PTT button toggle (with a hand-off to the system "draw
+  over other apps" screen when the permission is missing) and **Volume keys and headset button**;
+  on Android and desktop, **Host a relay on this device**, which runs the server in-app so no
+  separate machine is needed. Each row is hidden on a platform that cannot do it
+  (`domain/PlatformCapabilities`: `canShowFloatingButton`, `canUseHardwareButtons`,
+  `canHostRelay`), and the section disappears when none apply. The stored values are still
+  round-tripped, never dropped.
 
 ## Security
 
@@ -109,6 +113,20 @@ Three surfaces, all driven by the same foreground service:
 | **Notification** | Tap **Talk** / **Stop** | Always present while the session runs; also shows channel and status, plus **Disconnect** |
 | **Floating bubble** | **Hold** to talk, drag to move | Real press-and-hold, and the only surface that shows the channel while another app is in front. Position persists. Hidden while the app itself is on screen, where it would only cover the button it duplicates |
 | **Home-screen widget** | Tap to toggle transmit; −/+ for channel | Tap-to-toggle only — widgets cannot receive touch-down/up. The container follows the launcher's theme; only the transmit key is painted from the shared status palette |
+
+### Volume keys and headset button
+
+Off by default, because it takes over the volume keys (`AppSettings.hardwareButtonsEnabled`).
+
+- **Volume keys** — with the app on screen, hold Volume Up or Down to talk and release to stop.
+  `MainActivity.onKeyDown`/`onKeyUp` dispatch `MainAction.Speak`/`StopSpeak`, the same actions as
+  the big button, and consume the key (repeats included) so the volume does not change. They do
+  nothing with the screen off or another app in front; that would need an accessibility service,
+  which is deliberately not used.
+- **Headset button** — while the session runs, `PttForegroundService` holds an active
+  `MediaSession` so Android routes the headset's play/pause/hook key to it; down and up map to
+  `requestTalk()`/`releaseTalk()`. Works backgrounded. A headset that sends only a quick click
+  (down and up together) gives a very short transmission.
 
 ### The floating bubble
 

@@ -22,6 +22,11 @@ data class AppSettings(
     val displayName: String = DEFAULT_NAME,
     val broadcastStartBipEnabled: Boolean = DEFAULT_BROADCAST_START_BIP_ENABLED,
     val floatingButtonEnabled: Boolean = false,
+    /**
+     * Volume keys (while the app is open) and a headset's media button (anywhere the session
+     * runs) press and release the talk button. Off by default: it takes over the volume keys.
+     */
+    val hardwareButtonsEnabled: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val languageMode: LanguageMode = LanguageMode.SYSTEM,
     /** Run an on-device relay so no separate server is needed on a LAN. */

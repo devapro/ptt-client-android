@@ -16,3 +16,7 @@ actual val canHostRelay: Boolean = false
  * *receiver*, which is exactly the "why is this so quiet" symptom this control exists to fix.
  */
 actual val canRouteAudioOutput: Boolean = true
+
+actual val canShowFloatingButton: Boolean = false
+
+actual val canUseHardwareButtons: Boolean = false

@@ -82,7 +82,8 @@ fun StatusCard(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
+                    // Two lines: "<name> is talking" beside Disconnect does not fit on one.
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
