@@ -38,6 +38,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             broadcastStartBipEnabled = prefs[KEY_BROADCAST_START_BIP]
                 ?: AppSettings.DEFAULT_BROADCAST_START_BIP_ENABLED,
             floatingButtonEnabled = prefs[KEY_FLOATING] ?: false,
+            hardwareButtonsEnabled = prefs[KEY_HARDWARE_BUTTONS] ?: false,
             themeMode = ThemeMode.fromStorage(prefs[KEY_THEME]),
             languageMode = LanguageMode.fromStorage(prefs[KEY_LANGUAGE]),
             hostServerEnabled = prefs[KEY_HOST_SERVER] ?: false,
@@ -74,6 +75,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             .ifEmpty { AppSettings.DEFAULT_NAME }
         prefs[KEY_BROADCAST_START_BIP] = settings.broadcastStartBipEnabled
         prefs[KEY_FLOATING] = settings.floatingButtonEnabled
+        prefs[KEY_HARDWARE_BUTTONS] = settings.hardwareButtonsEnabled
         prefs[KEY_HOST_SERVER] = settings.hostServerEnabled
         prefs[KEY_THEME] = settings.themeMode.name
         prefs[KEY_LANGUAGE] = settings.languageMode.name
@@ -131,6 +133,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val KEY_NAME = stringPreferencesKey("display_name")
         val KEY_BROADCAST_START_BIP = booleanPreferencesKey("broadcast_start_bip_enabled")
         val KEY_FLOATING = booleanPreferencesKey("floating_button_enabled")
+        val KEY_HARDWARE_BUTTONS = booleanPreferencesKey("hardware_buttons_enabled")
         val KEY_THEME = stringPreferencesKey("theme_mode")
         val KEY_LANGUAGE = stringPreferencesKey("language_mode")
         val KEY_HOST_SERVER = booleanPreferencesKey("host_server_enabled")

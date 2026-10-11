@@ -4,14 +4,18 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.media.session.MediaSession
+import android.media.session.PlaybackState
 import android.os.Build
 import android.os.IBinder
+import android.view.KeyEvent
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.SettingsRepository
 import com.github.devapro.pttdroid.domain.PttController
+import com.github.devapro.pttdroid.history.HistoryStore
 import com.github.devapro.pttdroid.internalserver.InternalPttServer
 import com.github.devapro.pttdroid.overlay.OverlayController
 import com.github.devapro.pttdroid.widget.PttWidgetUpdater
@@ -36,17 +40,22 @@ class PttForegroundService : Service() {
 
     private val controller: PttController by inject()
     private val settingsRepository: SettingsRepository by inject()
+    private val historyStore: HistoryStore by inject()
     private val overlayController: OverlayController by inject()
     private val internalServer: InternalPttServer by inject()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var started = false
+    private var mediaSession: MediaSession? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         scope.launch { PttNotifications.ensureChannel(this@PttForegroundService) }
+        // A record whose WAV made it to disk but whose index entry did not (process death in
+        // between) is invisible to every other path; this is its only collection.
+        scope.launch { historyStore.pruneOrphans() }
         observeState()
     }
 
@@ -106,6 +115,11 @@ class PttForegroundService : Service() {
      * inside the window Android allows between `onStartCommand` and `startForeground`.
      */
     private suspend fun promoteToForeground() {
+        // The channel must exist before `startForeground`: `onCreate`'s own `ensureChannel` is a
+        // separate coroutine that suspends on the string read, so it can lose the race, and a
+        // notification on a missing channel crashes the app with "Bad notification for
+        // startForeground". `ensureChannel` is idempotent.
+        PttNotifications.ensureChannel(this)
         val notification = PttNotifications.build(this, controller.state.value)
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
@@ -137,10 +151,54 @@ class PttForegroundService : Service() {
                 .distinctUntilChanged()
                 .collect { (state, floatingEnabled, settings) ->
                     syncInternalServer(settings)
+                    syncHeadsetButton(settings.hardwareButtonsEnabled)
                     if (started) refreshNotification(state)
                     overlayController.sync(enabled = floatingEnabled, state = state)
                     PttWidgetUpdater.update(this@PttForegroundService, state)
                 }
+        }
+    }
+
+    /**
+     * Holds an active [MediaSession] while the setting is on, which is what makes Android route
+     * a headset's media button (wired hook, Bluetooth AVRCP) here. Press and release arrive as
+     * `ACTION_DOWN`/`ACTION_UP`, so it is hold-to-talk like the on-screen button. A headset that
+     * only sends a quick click on both will give a brief transmission.
+     */
+    private fun syncHeadsetButton(enabled: Boolean) {
+        if (!enabled) {
+            mediaSession?.run { isActive = false; release() }
+            mediaSession = null
+            return
+        }
+        if (mediaSession != null) return
+        mediaSession = MediaSession(this, "ptt-headset").apply {
+            setCallback(object : MediaSession.Callback() {
+                override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
+                    val event = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        mediaButtonIntent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        mediaButtonIntent.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
+                    } ?: return false
+                    // `controller` alone would resolve to MediaSession.getController().
+                    val ptt = this@PttForegroundService.controller
+                    if (event.keyCode !in HEADSET_KEYS) return false
+                    when (event.action) {
+                        KeyEvent.ACTION_DOWN -> if (event.repeatCount == 0) ptt.requestTalk()
+                        KeyEvent.ACTION_UP -> ptt.releaseTalk()
+                    }
+                    return true
+                }
+            })
+            // A session must look like it is playing to be the one media buttons go to.
+            setPlaybackState(
+                PlaybackState.Builder()
+                    .setActions(PlaybackState.ACTION_PLAY_PAUSE)
+                    .setState(PlaybackState.STATE_PLAYING, 0, 1f)
+                    .build(),
+            )
+            isActive = true
         }
     }
 
@@ -204,9 +262,19 @@ class PttForegroundService : Service() {
     override fun onDestroy() {
         started = false
         internalServer.stop()
+        syncHeadsetButton(enabled = false)
         overlayController.hide()
         controller.shutdown()
         scope.cancel()
         super.onDestroy()
+    }
+
+    private companion object {
+        val HEADSET_KEYS = setOf(
+            KeyEvent.KEYCODE_HEADSETHOOK,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_MEDIA_PLAY,
+            KeyEvent.KEYCODE_MEDIA_PAUSE,
+        )
     }
 }

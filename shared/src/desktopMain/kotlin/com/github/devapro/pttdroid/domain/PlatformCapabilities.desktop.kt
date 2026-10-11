@@ -6,3 +6,7 @@ package com.github.devapro.pttdroid.domain
  * `setOutput`. The speaker/earpiece control is omitted here rather than shown inert.
  */
 actual val canRouteAudioOutput: Boolean = false
+
+actual val canShowFloatingButton: Boolean = false
+
+actual val canUseHardwareButtons: Boolean = false

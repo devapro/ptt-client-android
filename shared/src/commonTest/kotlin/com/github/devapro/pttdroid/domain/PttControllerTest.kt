@@ -41,6 +41,9 @@ class PttControllerTest {
         var connectCalls = 0
         var acceptsAudio = true
 
+        /** False models a transport with no live session: control sends fail outright. */
+        var acceptControls = true
+
         /** Rejects exactly this many subsequent `sendAudio` calls, then goes back to accepting —
          *  models a relay hiccup on the bip preamble that clears up before real audio starts. */
         var failNextAudioSends = 0
@@ -57,8 +60,10 @@ class PttControllerTest {
 
         override suspend fun disconnect() = Unit
 
-        override suspend fun send(message: ClientMessage) {
+        override suspend fun send(message: ClientMessage): Boolean {
+            if (!acceptControls) return false
             sent += message
+            return true
         }
 
         override suspend fun sendAudio(pcm: ByteArray): Boolean {
@@ -96,11 +101,33 @@ class PttControllerTest {
             return prepareSucceeds
         }
         override fun play(pcm: ByteArray) { played += pcm }
+        override fun stop() = Unit
         override fun setOutput(output: com.github.devapro.pttdroid.data.settings.AudioOutput) {
             lastOutput = output
         }
         override fun setVolume(volume: Float) { lastVolume = volume }
         override fun release() { released++ }
+    }
+
+    /**
+     * Foreground, so the history capture stays inert for the pre-existing floor-state tests;
+     * the capture's own behaviour has its tests in history/.
+     */
+    private fun inertHistory(
+        scope: TestScope,
+        player: FakePlayer,
+    ): Pair<com.github.devapro.pttdroid.history.BackgroundRecordCapture, com.github.devapro.pttdroid.history.HistoryPlayback> {
+        val historyStore = com.github.devapro.pttdroid.history.FakeHistoryStore()
+        return com.github.devapro.pttdroid.history.BackgroundRecordCapture(
+            store = historyStore,
+            clock = com.github.devapro.pttdroid.history.FakeClock(),
+            isForeground = com.github.devapro.pttdroid.history.FakeForeground(true),
+            scope = scope,
+        ) to com.github.devapro.pttdroid.history.HistoryPlayback(
+            player = player,
+            store = historyStore,
+            scope = scope,
+        )
     }
 
     private fun harness(
@@ -114,6 +141,7 @@ class PttControllerTest {
         val connection = FakeConnection()
         val recorder = FakeRecorder()
         val player = FakePlayer()
+        val (historyCapture, historyPlayback) = inertHistory(scope, player)
         val controller = PttController(
             connection = connection,
             recorder = recorder,
@@ -121,6 +149,8 @@ class PttControllerTest {
             settingsProvider = settingsProvider,
             channelPersister = {},
             scope = scope,
+            historyCapture = historyCapture,
+            historyPlayback = historyPlayback,
         )
         return Triple(controller, connection, recorder to player)
     }
@@ -859,13 +889,17 @@ class PttControllerTest {
         val persisted = mutableListOf<Int>()
         val connection = FakeConnection()
         val recorder = FakeRecorder()
+        val player = FakePlayer()
+        val (historyCapture, historyPlayback) = inertHistory(this, player)
         val controller = PttController(
             connection = connection,
             recorder = recorder,
-            player = FakePlayer(),
+            player = player,
             settingsProvider = { com.github.devapro.pttdroid.data.settings.AppSettings() },
             channelPersister = { persisted += it },
             scope = this,
+            historyCapture = historyCapture,
+            historyPlayback = historyPlayback,
         )
 
         controller.setChannel(0)
@@ -882,10 +916,12 @@ class PttControllerTest {
         var storedChannel = com.github.devapro.pttdroid.data.settings.AppSettings.DEFAULT_CHANNEL
         val persisted = mutableListOf<Int>()
         val connection = FakeConnection()
+        val player = FakePlayer()
+        val (historyCapture, historyPlayback) = inertHistory(this, player)
         val controller = PttController(
             connection = connection,
             recorder = FakeRecorder(),
-            player = FakePlayer(),
+            player = player,
             settingsProvider = {
                 com.github.devapro.pttdroid.data.settings.AppSettings(channel = storedChannel)
             },
@@ -894,6 +930,8 @@ class PttControllerTest {
                 storedChannel = channel
             },
             scope = this,
+            historyCapture = historyCapture,
+            historyPlayback = historyPlayback,
         )
 
         controller.start()
@@ -1044,5 +1082,179 @@ class PttControllerTest {
         assertEquals(1, connection.connectCalls, "an error is still an answer")
         assertEquals(null, controller.state.value.lastError)
         controller.shutdown()
+    }
+
+    // --- history wiring --------------------------------------------------------------------------
+
+    /**
+     * A controller over a shared store, with the capture switchable to the background — these
+     * tests are about the *wiring*: that floor, audio and disconnect events really reach the
+     * capture, and that replay really competes with the live channel. The capture and pump
+     * behaviours themselves have their own suites in `history/`.
+     */
+    private class HistoryFixture(
+        val controller: PttController,
+        val connection: FakeConnection,
+        val player: FakePlayer,
+        val store: com.github.devapro.pttdroid.history.FakeHistoryStore,
+    ) {
+        /** A finished one-frame record already in the store, ready to be replayed. */
+        suspend fun record(id: String = "r1"): com.github.devapro.pttdroid.history.VoiceRecord {
+            val record = com.github.devapro.pttdroid.history.VoiceRecord(
+                id = id,
+                fileName = "$id.wav",
+                startedAtMs = 0,
+                endedAtMs = 1,
+                durationMs = 40,
+                sizeBytes = com.github.devapro.pttdroid.audio.AudioConfig.FRAME_BYTES.toLong(),
+                senderName = "Alice",
+            )
+            store.addRecord(
+                record,
+                com.github.devapro.pttdroid.history.Wav.toWav(
+                    ByteArray(3 * com.github.devapro.pttdroid.audio.AudioConfig.FRAME_BYTES),
+                ),
+            )
+            return record
+        }
+    }
+
+    private fun historyFixture(
+        scope: TestScope,
+        foreground: Boolean,
+    ): HistoryFixture {
+        val connection = FakeConnection()
+        val player = FakePlayer()
+        val store = com.github.devapro.pttdroid.history.FakeHistoryStore()
+        val controller = PttController(
+            connection = connection,
+            recorder = FakeRecorder(),
+            player = player,
+            settingsProvider = { com.github.devapro.pttdroid.data.settings.AppSettings() },
+            channelPersister = {},
+            scope = scope,
+            historyCapture = com.github.devapro.pttdroid.history.BackgroundRecordCapture(
+                store = store,
+                clock = com.github.devapro.pttdroid.history.FakeClock(),
+                isForeground = com.github.devapro.pttdroid.history.FakeForeground(foreground),
+                scope = scope,
+            ),
+            historyPlayback = com.github.devapro.pttdroid.history.HistoryPlayback(
+                player = player,
+                store = store,
+                scope = scope,
+            ),
+        )
+        return HistoryFixture(controller, connection, player, store)
+    }
+
+    private suspend fun HistoryFixture.connectAndMeet(
+        vararg others: com.github.devapro.pttdroid.network.protocol.ServerMessage,
+    ) {
+        controller.start()
+        connection.inbound.emit(ConnectionEvent.Connected)
+        connection.inbound.emit(ConnectionEvent.Control(Welcome("me", 1, 2)))
+        others.forEach { connection.inbound.emit(ConnectionEvent.Control(it)) }
+    }
+
+    @Test
+    fun `a transmission the session hears reaches the history store`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val fixture = historyFixture(this, foreground = false)
+        fixture.connectAndMeet(Floor("alice", "Alice", isSelf = false))
+
+        fixture.connection.inbound.emit(
+            ConnectionEvent.Audio(ByteArray(com.github.devapro.pttdroid.audio.AudioConfig.FRAME_BYTES)),
+        )
+        fixture.connection.inbound.emit(ConnectionEvent.Control(Floor(null, null, isSelf = false)))
+
+        val record = fixture.store.recordsNow().single()
+        assertEquals("Alice", record.senderName)
+        fixture.controller.shutdown()
+    }
+
+    @Test
+    fun `a session that drops mid-record still saves what arrived`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val fixture = historyFixture(this, foreground = false)
+        fixture.connectAndMeet(Floor("alice", "Alice", isSelf = false))
+        fixture.connection.inbound.emit(
+            ConnectionEvent.Audio(ByteArray(com.github.devapro.pttdroid.audio.AudioConfig.FRAME_BYTES)),
+        )
+
+        fixture.connection.inbound.emit(ConnectionEvent.Disconnected("network lost"))
+
+        assertEquals(1, fixture.store.recordsNow().size)
+        fixture.controller.shutdown()
+    }
+
+    @Test
+    fun `taking the floor drops the record just answered`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val fixture = historyFixture(this, foreground = false)
+        fixture.connectAndMeet(Floor("alice", "Alice", isSelf = false))
+        fixture.connection.inbound.emit(
+            ConnectionEvent.Audio(ByteArray(com.github.devapro.pttdroid.audio.AudioConfig.FRAME_BYTES)),
+        )
+        fixture.connection.inbound.emit(ConnectionEvent.Control(Floor(null, null, isSelf = false)))
+        assertEquals(1, fixture.store.recordsNow().size)
+
+        // The FakeClock never moves, so the record is by construction inside the 30 s window.
+        fixture.controller.requestTalk()
+        fixture.connection.inbound.emit(ConnectionEvent.Control(Floor("me", "Me", isSelf = true)))
+
+        assertTrue(fixture.store.recordsNow().isEmpty())
+        fixture.controller.shutdown()
+    }
+
+    @Test
+    fun `live audio silences a history replay`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val fixture = historyFixture(this, foreground = true)
+        val record = fixture.record()
+        // start() is what subscribes the event collector: without it the live Audio event below
+        // would sit in the fake's buffer unheard, and the replay would die of old age instead.
+        fixture.connectAndMeet()
+        fixture.controller.playHistory(record)
+        assertEquals("r1", fixture.controller.state.value.historyPlayingId)
+        val framesAtStart = fixture.player.played.size
+
+        fixture.connection.inbound.emit(
+            ConnectionEvent.Audio(ByteArray(com.github.devapro.pttdroid.audio.AudioConfig.FRAME_BYTES) { 7 }),
+        )
+        advanceTimeBy(1_000)
+
+        assertEquals(null, fixture.controller.state.value.historyPlayingId)
+        assertEquals(
+            framesAtStart + 1,
+            fixture.player.played.size,
+            "the replay stops dead; only the live frame follows",
+        )
+        assertTrue(
+            fixture.player.played.last().all { it == 7.toByte() },
+            "what reaches the speaker last is the live audio",
+        )
+        fixture.controller.shutdown()
+    }
+
+    @Test
+    fun `a replay refuses to start while someone else holds the floor`() = runTest(
+        UnconfinedTestDispatcher(),
+    ) {
+        val fixture = historyFixture(this, foreground = true)
+        fixture.connectAndMeet(Floor("alice", "Alice", isSelf = false))
+        val record = fixture.record()
+
+        fixture.controller.playHistory(record)
+
+        assertEquals(null, fixture.controller.state.value.historyPlayingId)
+        // The session's own track is already prepared for the speaker's incoming audio — that
+        // is not the replay starting; nothing has reached the speaker but the live stream could.
+        assertEquals(0, fixture.player.played.size)
+        fixture.controller.shutdown()
     }
 }

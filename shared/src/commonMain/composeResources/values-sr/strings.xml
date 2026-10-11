@@ -106,6 +106,8 @@
 
     <string name="settings_hands_free">Слободне руке</string>
     <string name="settings_floating">Плутајуће PTT дугме</string>
+    <string name="settings_hardware_buttons">Тастери јачине звука и слушалице</string>
+    <string name="settings_hardware_buttons_summary">Држите тастер јачине звука (апликација отворена) или дугме слушалица да говорите, пустите да завршите</string>
     <string name="settings_floating_summary">Прикажи дугме за говор које се може превлачити преко других апликација</string>
     <string name="settings_grant_overlay">Дозволи „приказ преко других апликација”</string>
     <string name="settings_overlay_required">Потребна дозвола за приказ плутајућег дугмета</string>
@@ -127,4 +129,13 @@
     <!-- Permissions -->
     <string name="permission_mic_required">За говор је потребан приступ микрофону</string>
     <string name="permission_grant">Дозволи приступ микрофону</string>
+
+    <!-- Voice record history -->
+    <string name="history">Историја</string>
+    <string name="cd_history">Отвори историју порука</string>
+    <string name="history_empty">Поруке примљене док је апликација била у позадини појављују се овде</string>
+    <string name="history_unknown_sender">Непознат</string>
+    <string name="cd_play_record">Пусти поруку</string>
+    <string name="cd_stop_record">Заустави пуштање</string>
+    <string name="cd_delete_record">Обриши поруку</string>
 </resources>

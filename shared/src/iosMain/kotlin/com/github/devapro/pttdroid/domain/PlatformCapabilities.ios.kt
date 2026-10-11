@@ -2,7 +2,8 @@ package com.github.devapro.pttdroid.domain
 
 /**
  * `InternalPttServer` lives in `:shared`'s `jvmCommonMain` (it embeds a Ktor CIO server) and has
- * no iOS actual — iOS cannot see the class at all. See `ui/SettingsScreen.kt`'s `canHostRelay`
+ * no iOS actual — iOS cannot see the class at all. See `:features:settings`'s
+ * `features/settings/.../SettingsScreen.kt` `canHostRelay`
  * parameter: this is what makes the "Host a relay on this device" row disappear entirely on iOS
  * rather than showing disabled.
  */
@@ -15,3 +16,7 @@ actual val canHostRelay: Boolean = false
  * *receiver*, which is exactly the "why is this so quiet" symptom this control exists to fix.
  */
 actual val canRouteAudioOutput: Boolean = true
+
+actual val canShowFloatingButton: Boolean = false
+
+actual val canUseHardwareButtons: Boolean = false

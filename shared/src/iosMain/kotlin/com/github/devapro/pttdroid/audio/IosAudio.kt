@@ -361,9 +361,12 @@ internal class IosVoicePlayer : VoicePlayerContract {
      * `trySend`/`tryReceive` — the same primitive `DesktopVoicePlayer`'s `pending` channel already
      * relies on for exactly this producer/realtime-consumer split, and safe to call from any
      * thread without blocking. Drop-oldest on overflow; the render block treats "nothing queued"
-     * as silence rather than blocking to wait for one.
+     * as silence rather than blocking to wait for one. A `var` because [stop] swaps a fresh
+     * channel in to discard the backlog; [play] and the render block re-read the property every
+     * call, so the swap takes effect on the next frame either way.
      */
-    private val queue: Channel<FloatArray> = Channel(capacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private var queue: Channel<FloatArray> =
+        Channel(capacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     /** Idempotent; safe to call more than once. */
     override fun prepare(): Boolean {
@@ -458,6 +461,20 @@ internal class IosVoicePlayer : VoicePlayerContract {
 
     override fun setVolume(volume: Float) {
         this.volume = AppSettings.clampVolume(volume)
+    }
+
+    /**
+     * Cuts off buffered playback at once by swapping [queue] — every frame queued but not yet
+     * picked up by the render block is dropped with the closed old channel. One caveat of the
+     * pull design: the frame the render block is *mid-way through* (its local `current`) plays
+     * out to its end — at most one 40 ms frame — because the render thread must never be asked
+     * to synchronise with the caller. The engine keeps running, so audio written after this is
+     * heard normally.
+     */
+    override fun stop() {
+        val old = queue
+        queue = Channel(capacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+        old.close()
     }
 
     /** Writes one received frame. No logging here — this runs per audio frame. */

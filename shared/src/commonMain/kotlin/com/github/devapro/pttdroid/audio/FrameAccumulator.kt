@@ -4,12 +4,13 @@ package com.github.devapro.pttdroid.audio
  * Assembles arbitrarily-sized byte chunks into fixed-size frames of [frameSize] bytes.
  *
  * Exists for capture APIs that can short-read — `javax.sound.sampled.TargetDataLine.read` on
- * desktop, unlike `AudioRecord.read` on Android, does not guarantee it fills the buffer it was
- * given. Android's `VoiceRecorder` trims a short read down to the bytes actually captured and
- * ships that (see `docs/known-issues.md` #5); on desktop that would put a short, odd-length frame
+ * desktop and `android.media.AudioRecord.read` on Android (in its stopped/interrupted cases) do
+ * not guarantee they fill the buffer they were given, and iOS hardware tap buffers are
+ * frame-sized only by luck. Trimming a short read down to the bytes captured and shipping that —
+ * what Android used to do (see `docs/known-issues.md` #5) — would put a short, odd-length frame
  * on the wire, violating the protocol's fixed 1280-byte frame contract. This class instead
  * carries any leftover bytes to the next call, so every frame handed out is exactly [frameSize]
- * bytes — never short, never long.
+ * bytes — never short, never long. All three platforms' capture feeds chunks through it.
  *
  * Not thread-safe: feed it from a single reader, same as the line it wraps.
  */

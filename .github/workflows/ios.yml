@@ -8,17 +8,34 @@ name: iOS
 on:
   push:
     branches: [main]
+    # Every path an iOS build actually depends on: each KMP module that declares iOS targets
+    # (:shared, :core — which owns PttWidget's shared widgets incl. the known-issues #20 floor
+    # gesture since step 5 of the module-graph refactor — :ui-shell, :features:*, :features-api:*),
+    # the Xcode project, the Gradle wiring (the two root scripts set the plugin versions and the
+    # module list) and this file itself. Keep in sync with .github/workflows/ci.yml's needs.
     paths:
       - 'shared/**'
+      - 'core/**'
+      - 'ui-shell/**'
+      - 'features/**'
+      - 'features-api/**'
       - 'iosApp/**'
       - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
       - '.github/workflows/ios.yml'
   pull_request:
     branches: [main]
     paths:
       - 'shared/**'
+      - 'core/**'
+      - 'ui-shell/**'
+      - 'features/**'
+      - 'features-api/**'
       - 'iosApp/**'
       - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
       - '.github/workflows/ios.yml'
   workflow_dispatch:
 
@@ -44,15 +61,19 @@ jobs:
 
       # Fastest signal: pure Kotlin/Native compilation, no linking, no Xcode. Catches an iosMain
       # compile error (the likeliest failure — see the Phase 7a report) in well under a minute of
-      # actual Kotlin/Native work, before paying for the slower link/Xcode steps below.
-      - name: Compile :shared for iosSimulatorArm64
-        run: ./gradlew -PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64
+      # actual Kotlin/Native work, before paying for the slower link/Xcode steps below. :ui-shell's
+      # iOS compilations pull :shared's (and the feature/api modules') as dependency tasks, so one
+      # invocation front-end-compiles every iosMain in the graph — since Phase 2 of the module-graph
+      # refactor, this is where App.kt/MainViewController.kt/KoinIos.kt live.
+      - name: Compile :ui-shell for iosSimulatorArm64
+        run: ./gradlew -PenableIosTargets=true :ui-shell:compileKotlinIosSimulatorArm64
 
       # Links the actual klib into a framework binary — exercises the cinterop calls in
       # network/tls/PinnedTrust.ios.kt / PttHttpClient.ios.kt that compileKotlin alone does not
-      # fully validate.
+      # fully validate. The PTTdroidShared framework is exported by :ui-shell since Phase 2 (was
+      # :shared) — same baseName, so iosApp's `import PTTdroidShared` is unaffected.
       - name: Link debug framework for iosSimulatorArm64
-        run: ./gradlew -PenableIosTargets=true :shared:linkDebugFrameworkIosSimulatorArm64
+        run: ./gradlew -PenableIosTargets=true :ui-shell:linkDebugFrameworkIosSimulatorArm64
 
       - name: Build iosApp with Xcode
         run: |

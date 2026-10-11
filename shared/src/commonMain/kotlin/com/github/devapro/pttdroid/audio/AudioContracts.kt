@@ -33,6 +33,20 @@ interface VoicePlayerContract {
     fun play(pcm: ByteArray)
 
     /**
+     * Cuts off whatever [play] has already fed the device: everything queued or buffered but not
+     * yet audible is discarded, immediately, and the device stays ready for further [play] calls.
+     *
+     * [release] cannot stand in for this — it tears the device down for the whole session, and a
+     * history replay must be able to stop mid-record while live audio keeps flowing through the
+     * same track. Idempotent and safe to call at any time, including before [prepare] (then a pure
+     * no-op). The one caller today is `HistoryPlayback.stop`, which needs exactly this: cancelling
+     * the pump alone leaves whatever the player has already buffered — its own queue plus the
+     * device's — to play out audibly from a record the user just deleted (or stopped) in the
+     * History screen.
+     */
+    fun stop()
+
+    /**
      * Chooses the loudspeaker or the handset receiver.
      *
      * Remembered by the implementation across [prepare]/[release] rather than being re-applied

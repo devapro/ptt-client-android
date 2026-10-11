@@ -4,29 +4,43 @@
 
 | Source set | Purpose |
 |---|---|
-| `shared/src/commonTest/`, `shared/src/jvmCommonTest/` | JVM unit tests — no device required. Moved here from `app/src/test/` in the Phase 5 Compose Multiplatform migration; run on **both** the `androidTarget` and `desktop` compilations | 
-| `shared/src/androidInstrumentedTest/` | Compose UI tests, plus the TLS and settings-migration integration tests — needs a running device or emulator. Moved here from `app/src/androidTest/` in Phase 5, since the composables and the settings/network code they exercise now live in `:shared` |
+| `shared/src/commonTest/`, `shared/src/jvmCommonTest/` | JVM unit tests in `:shared` (263 cases) — no device required. Moved here from `app/src/test/` in the Phase 5 Compose Multiplatform migration; run on **both** the `androidTarget` and `desktop` compilations |
+| `features-api/settings/src/commonTest/` | `SettingsFormStateTest` (55) — lives next to the pure type under test |
+| `features/main/src/commonTest/`, `features/settings/src/commonTest/`, `features/history/src/commonTest/` | Each feature's reducer tests, living with the reducers they cover: `MainReducersTest` (14), `SettingsReducersTest` (10), `HistoryReducersTest` (11) + `HistoryViewModelTest` (3) + `HistoryViewModelMergeAdversarialTest` (4) + `HistoryDurationFormatTest` (6) + `HistoryDurationFormatEdgeTest` (4), plus `SettingsExitObserverTest` (8) in `:features:settings` — the Settings screen's exit rule, which is a screen-root behaviour rather than a reducer's |
+| `app/src/test/` | `CaptureFrameLoopTest` (12) — the Android capture frame contract — and `PlaybackDrainLoopTest` (6) — the Android playback drain contract at the `PcmWriteSink` seam; both run on the `androidTarget` compilation only |
+| `core/src/androidInstrumentedTest/` | `PTTButtonTest` — moved here with the `:core` widget it tests in step 5 of the module-graph refactor (before that it lived in `shared/src/androidInstrumentedTest/`). Needs a running device or emulator |
+| `shared/src/androidInstrumentedTest/` | The TLS and settings-migration integration tests — needs a running device or emulator. Moved here from `app/src/androidTest/` in Phase 5; the network and settings code they exercise still lives in `:shared` |
+| `features/main/src/androidInstrumentedTest/`, `features/settings/src/androidInstrumentedTest/` | `MainScreenTest` and `SettingsScreenTest` — moved with their screens into the feature modules in Phase 2 |
 
 ```bash
-./gradlew :shared:testDebugUnitTest :shared:desktopTest   # 240 tests, on both targets — verified, 0 failures
-./gradlew :app:testDebugUnitTest     # 0 — nothing left in :app after Phase 5
+./gradlew testDebugUnitTest        # 396 JVM unit tests across six modules, on the androidTarget compilation — verified, 0 failures
+./gradlew desktopTest              # 378 on the desktop compilation — the same suites minus :app's 18, which exist only on androidTarget — 0 failures
+./gradlew :app:testDebugUnitTest     # 18 — CaptureFrameLoopTest + PlaybackDrainLoopTest, the Android audio contracts at their seams
 ./gradlew lintDebug :shared:lintDebug              # :app 21 pre-existing findings, :shared 0
-ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest   # 53 tests: 47 UI + 3 migration + 3 TLS (skipped without -Pandroid.testInstrumentationRunnerArguments.relayHost=...); ANDROID_SERIAL picks the device
+ANDROID_SERIAL=<serial> ./gradlew :core:connectedDebugAndroidTest :shared:connectedDebugAndroidTest :features:main:connectedDebugAndroidTest :features:settings:connectedDebugAndroidTest   # 53 tests across the four modules: 47 UI (7 :core + 15 :features:main + 25 :features:settings) + 3 migration + 3 TLS (skipped without -Pandroid.testInstrumentationRunnerArguments.relayHost=...); ANDROID_SERIAL picks the device
 ```
 
-The counts and test-class breakdown below are re-verified as of the Settings MVI refactor
-(`:shared:testDebugUnitTest` and `:shared:desktopTest` each produce 240 tests
-with 0 failures; `:shared:connectedDebugAndroidTest` produces 53 with 50 passing and 3 skipped) by
-actually running each command, not by arithmetic on the table.
+The counts and test-class breakdown below are re-verified as of the final regression gate over
+the C-series relay/controller work by
+actually running each command, not by arithmetic on the table
+(`testDebugUnitTest` produces 396 tests — 263 `:shared`,
+55 `:features-api:settings`, 28 `:features:history`, 18 `:features:settings`,
+14 `:features:main`, 18 `:app` —
+and `desktopTest` produces 378, the same minus the `:app`-only 18, both with 0 failures;
+`:core` has no unit tests, its only suite being the moved instrumented
+`PTTButtonTest`;
+the four `connectedDebugAndroidTest` tasks above produce 7 + 6 + 15 + 25 = 53 with 50 passing and
+3 skipped).
 
-## Unit tests (240, all passing, on both `androidTarget` and `desktop`)
+## Unit tests (390 on `androidTarget`, 378 on `desktop`, all passing on both)
 
 | Test class | Tests | What it pins down |
 |---|---|---|
 | `network/ProtocolSerializationTest` | 9 | Exact JSON for every message type — this is a contract with a separate codebase, so the tests assert literal wire text, not just round-trips. Includes tolerance of unknown fields |
 | `domain/ReconnectPolicyTest` | 4 | Backoff grows, respects the 30 s cap, never drops below the base, is genuinely jittered, and resets |
-| `domain/PttControllerTest` | 32 | The floor state machine, driven through a fake `PttConnection`. Most importantly: **pressing PTT must not open the microphone** — only a server `floor{isSelf:true}` may start transmission. Also `floor_busy`, another user holding the floor disabling `canTalk`, release, incoming audio reaching the player, disconnect resetting state, and `clearError` dropping a stale error without dropping the session. Then the negative space: pressing while disconnected or while somebody else holds the floor sends nothing, a second press does not send a second request, releasing what we never held sends nothing, somebody else's grant clears our pending request, and losing the socket mid-transmission closes the microphone. Then the keepalive (known-issues #36), on virtual time: a socket that has gone quiet is probed with `ping` before it is given up on and redialled after three silent intervals; a `pong` puts the countdown back to zero; audio counts as proof of life, so a channel with traffic on it is never probed; the watchdog stops with the socket it was watching; and the `malformed_message` an older relay answers `ping` with is treated as proof of life rather than as a fault to show the user |
-| `data/AppSettingsTest` | 26 | Channel clamping (the old UI allowed 0 and negatives), name URL-encoding (spaces, symbols, non-ASCII), truncation at 32 characters before the server can refuse it, the protocol version always being present, the `10.0.2.2` default, and the derived `serverHost`/`serverPort` pair never exposing which `ServerMode` produced it |
+| `domain/PttControllerTest` | 49 | The floor state machine, driven through a fake `PttConnection`. Most importantly: **pressing PTT must not open the microphone** — only a server `floor{isSelf:true}` may start transmission. Also `floor_busy`, another user holding the floor disabling `canTalk`, release, incoming audio reaching the player, disconnect resetting state, and `clearError` dropping a stale error without dropping the session. Then the negative space: pressing while disconnected or while somebody else holds the floor sends nothing, a second press does not send a second request, releasing what we never held sends nothing, somebody else's grant clears our pending request, and losing the socket mid-transmission closes the microphone. Then the keepalive (known-issues #36), on virtual time: a socket that has gone quiet is probed with `ping` before it is given up on and redialled after three silent intervals; a `pong` puts the countdown back to zero; audio counts as proof of life, so a channel with traffic on it is never probed; the watchdog stops with the socket it was watching; and the `malformed_message` an older relay answers `ping` with is treated as proof of life rather than as a fault to show the user. Then the history wiring: a received transmission lands in the store as a record, a disconnect mid-message saves what arrived, taking the floor purges the records answered inside the 30 s window, live audio arriving silences a history replay, and a replay refuses to start while someone else holds the floor |
+| `domain/PttControllerC3AdversarialTest` | 10 | C-3 verification of the controller's error handling, written independently of the coder's suite: a `not_floor_holder` arriving while transmitting tears the floor state down exactly like `floor_busy` (stop + both flags cleared, a fresh press afterward works), while `frame_too_large` stays banner-only and `malformed_message` stays banner-silent and keeps the floor (old-relay keepalive compat); a `talk_request` whose send reports failure rolls the optimistic pending flag back synchronously so a later press works; `talk_release` and keepalive probe failures are deliberately ignored; the bip preamble is sized from `AudioConfig` regardless of control-path health |
+| `data/AppSettingsTest` | 29 | Channel clamping (the old UI allowed 0 and negatives), name URL-encoding (spaces, symbols, non-ASCII), truncation at 32 characters before the server can refuse it, the protocol version always being present, the `10.0.2.2` default, and the derived `serverHost`/`serverPort` pair never exposing which `ServerMode` produced it |
 | `data/ServerModeTest` | 5 | `ServerMode.restore`'s one compatibility duty: an install with a stored address and no stored mode is Custom, never Default, even if the address happens to equal the built-in one only by coincidence |
 | `data/ServerAddressTest` | 16 | `ServerAddress.parse` against everything people actually paste: a bare host, `host:port`, a whole URL with its own scheme and port, an IPv6 literal, credentials (rejected), whitespace from a clipboard, and a port outside the legal range |
 | `data/ThemeModeTest` | 4 | Theme resolution against the system setting, and that an unknown stored value falls back to `SYSTEM` rather than crashing the settings read — settings outlive enum constants |
@@ -35,10 +49,36 @@ actually running each command, not by arithmetic on the table.
 | `ui/PttUiStatusTest` | 13 | The state→presentation mapping the app screen, the bubble, the widget and the notification all share. Precedence (holding the floor outranks everything; a dead transport outranks stale floor bookkeeping), that only `READY` offers a press, and that the control stays **live** while we hold the floor — the regression behind known-issues #20 |
 | `audio/PcmGainTest` | 5 | The software volume desktop plays through: full gain hands back the very same array (so the default allocates nothing per frame), half gain halves every sample including negative ones, zero gain is silence rather than an untouched buffer, the ends of the 16-bit range survive, and an odd trailing byte is carried through. Little-endian byte order and sign extension are exactly the arithmetic that is wrong silently — a bug here is heard as distortion, not seen as a failure |
 | `audio/FrameAccumulatorTest` | 8 | The re-chunking desktop and iOS both use to turn a capture API's arbitrary-sized reads into exact `AudioConfig.FRAME_BYTES` frames: exact frames, short reads spread over several calls, an oversized chunk spanning more than one frame, a remainder carried across calls — all hardware-independent, so it runs in `commonTest` |
-| `network/KtorPttConnectionTest` | 1 | The OkHttp transport against a **real socket**, with the embedded relay as its peer: that the WebSocket `pingInterval` added for keepalive leaves the handshake alone (OkHttp runs that exchange below Ktor, so getting it wrong breaks every connection, not only a dying one), and that a `ping` written through `KtorPttConnection.send` comes back as a `pong` on the same event flow the controller watches |
-| `internalserver/InternalPttServerTest` | 6 | The on-device relay over a **real socket**: channel isolation, one-talker-at-a-time, audio without the floor rejected, invalid channel refused, and `ping` answered with `pong` — it is the third implementation of the server side, so the keepalive has to work against it too |
-| `model/SettingsFormStateTest` | 55 | The settings form's validation and merge logic, reachable from `commonTest` for the first time now that it lives outside `SettingsScreen`: seeding from `AppSettings`, every `SettingsEdit` branch, the channel digit filter, `secure` following a pasted scheme versus falling back to the TLS switch, the `Tls` edit keeping a scheme-implied port, `addressProblem`/`customAddress` under Default vs Custom, every `*Error` boundary, `relayConflict`, and `toSettings()` carrying forward the fields the form does not edit |
-| `reducer/SettingsReducersTest` | 10 | `OpenSettings` seeding `settingsForm` from the repository, `CloseSettings` clearing it, `EditSettings` applying to the current form, `SaveSettings` persisting/closing/chaining to `Reconnect`/emitting `ShowMessage` on success and touching nothing when `hasError`, and `RequestOverlayPermission` emitting `MainEvent.RequestOverlayPermission` |
+| `network/KtorPttConnectionTest` | 2 | The OkHttp transport against a **real socket**, with the embedded relay as its peer: a keepalive probe goes end to end — welcome first (the WebSocket `pingInterval` added for keepalive leaves the handshake alone), then a `ping` written through `KtorPttConnection.send` comes back as a `pong` on the same event flow the controller watches; and with two real connections and a real `PttController` as sender, a receiver gets the controller's bip preamble bytes *before* the microphone audio frames that follow them |
+| `internalserver/InternalPttServerTest` | 7 | The on-device relay over a **real socket**: audio relayed inside a channel and not across channels, one talker at a time, audio without the floor rejected, invalid channel refused, `ping` answered with `pong`, `welcome` carrying the shared audio parameters, and every peer getting a byte-for-byte-correct copy of every frame with three or more listeners — it is the third implementation of the server side, so the keepalive and fan-out correctness have to work against it too |
+| `internalserver/InternalPttServerFanoutTest` | 10 | C-5/C-5b acceptance for the embedded relay's per-session frame split, on two layers. Unit probes drive the real `ServerSession` mailbox directly (no writer, no socket, so every count is exact): the audio queue keeps exactly 64 and counts every shed oldest-first; floors/peers/pings collapse to the newest without disturbing the other kinds; errors are capped at 8 with the cap evicting its *own* oldest; the control wake is conflated to at most one token; the writer drains welcome → floor → peers → pong → errors FIFO; per-code one-second rate buckets stay independent; `closeOutbound` closes both delivery paths. One integration probe floods a non-reading peer with ~13 MB over a real socket while the floor churns and pins only what is end-to-end stable — see the KDoc and known-issues #45 for why eviction counts are not assertable there |
+| `internalserver/InternalPttServerC5bVerifyTest` | 9 | Independent C-5b verification of the same split against `ptt-server`'s `PttSession` (the standalone contract source), written by the verification pass rather than the coder: error FIFO below/at cap 8 (arrival order kept, own-oldest evicted); a thousand pending pongs collapse to one drained frame without evicting other kinds; `pollControl` drains welcome → floor → peers → pong → errors FIFO; `frame_too_large` and `not_floor_holder` rate-limit in independent buckets with all other codes sharing a third; the first text frame of every join is `Welcome`, exactly once, under floor churn; a hard-killed floor holder leaves the channel with the floor freed and no ghost peer |
+| `audio/CaptureFrameLoopTest` (`:app`) | 12 | The C-2 Android capture contract at the `CaptureFrameLoop`/`PcmReadSource` seam `VoiceRecorder` drives: every emitted frame is exactly `AudioConfig.FRAME_BYTES` (1280), short and odd reads are carried and never emitted, a partial at stop is discarded (fresh loop per start), byte order is preserved across carries, `step()` returns the raw read count, and source errors propagate |
+| `audio/PlaybackDrainLoopTest` (`:app`) | 6 | The receive-gap fix (known-issues #47) at the `PlaybackDrainLoop`/`PcmWriteSink` seam `VoicePlayer` drives: a burst piled up against a busy device reaches the sink complete and in order (the old non-blocking write dropped it), a partial write is retried at the offset the device reports until the frame is whole, overflow past the byte cap drops the *oldest* frames and never the newest, `clear()` discards the queue but not the frame already at the device, a failed write tears the loop down instead of spinning, and frames enqueued before `start()` are dropped so a stale reconnect backlog cannot play late. `androidTarget` only, like the capture suite |
+| `features/api/settings/SettingsFormStateTest` (`:features-api:settings`) | 55 | The settings form's validation and merge logic, reachable from `commonTest` for the first time now that it lives outside `SettingsScreen`: seeding from `AppSettings`, every `SettingsEdit` branch, the channel digit filter, `secure` following a pasted scheme versus falling back to the TLS switch, the `Tls` edit keeping a scheme-implied port, `addressProblem`/`customAddress` under Default vs Custom, every `*Error` boundary, `relayConflict`, and `toSettings()` carrying forward the fields the form does not edit |
+| `features/settings/reducer/SettingsReducersTest` (`:features:settings`) | 10 | `Open` seeding the form from the repository, `Close` clearing it, `EditSettings` applying to the current form, `SaveSettings` persisting/closing/chaining to `Reconnect`/emitting `ShowMessage` on success and touching nothing when `hasError`, and `RequestOverlayPermission` emitting `UiEvent.RequestOverlayPermission` |
+| `features/settings/SettingsExitObserverTest` (`:features:settings`) | 8 | The Settings screen root's exit rule (`SettingsExitObserver`), driven through the real view model, processor, reducers and repository: only a seeded → null **transition** pops (the null frames before `Open`'s disk read lands must not bounce out, and a `form == null` level would), a **rejected** save (known-issues #25's `hasError` guard) keeps the user in Settings with their edit, the arrow's `Close` and the edge it triggers produce exactly **one** pop, an unrelated `SettingsState` write while the form is seeded is not an exit, and a successful save still gets its `settings_saved` message out after the pop. `ReconnectReducer` is stood in for — see the class KDoc; that the seed `LaunchedEffect` runs once per entry is composition keying and needs a device |
+| `features/main/reducer/MainReducersTest` (`:features:main`) | 14 | Main's nine reducers: `InitConnection`/`Speak` refusing to touch the launcher or controller without the mic grant (the "pressing PTT must never open the microphone" invariant, at the reducer level), `Speak` requesting the floor without opening the mic and a second press not re-requesting, `Disconnect` stopping the launcher, `SetChannel` persisting + reconnecting, clamping and skipping a channel the session already has, `DismissError` reaching the controller, `StopSpeak` releasing the floor, the audio-output and volume pairs separating apply-from-persist (a drag is many `SetPlaybackVolume`s and exactly one `SavePlaybackVolume` write) |
+
+### Voice history
+
+| Test class | Tests | What it pins down |
+|---|---|---|
+| `history/BackgroundRecordCaptureTest` | 10 | The capture state machine on virtual time: a backgrounded transmission becomes exactly one record bounded by the floor, a foreground one becomes none, and one that *started* in the foreground stays unrecorded even after the app backgrounds; the floor changing hands closes the old record and opens a new one; a record started in the background survives the app opening mid-message; a silent hold records nothing; a disconnect still saves the partial; the frame cap is two minutes of wire audio; and answering deletes every record that ended inside the 30 s window while older ones survive |
+| `history/WavTest` | 6 | The hand-rolled RIFF/PCM16LE codec: a payload round-trips byte for byte, the header describes the wire format it wraps (sample rate, channels, byte rate read back field by field), an empty payload is still a valid file — and anything that is not our canonical layout is refused: too short to hold a header, tampered magic, a non-canonical `fmt` chunk or float format, a foreign sample rate, a `data` size that lies (negative, past EOF, or shorter than the payload, which reads only the declared part) |
+| `history/HistoryPlaybackTest` | 5 | The replay pump: a record plays out frame by frame at exactly the wire rate (40 ms per frame on virtual time), stop falls silent on the next tick, clears the playing id **and flushes the player** (known-issues #44), starting a second record cuts over from the first, a player that cannot be set up aborts the replay, and a record whose file is gone fails quietly |
+| `history/DataStoreHistoryStoreTest` | 8 | The store over a **real** preferences DataStore and temp-dir file storage (`jvmCommonTest`): a written record reads back identical with its audio, the index stays newest-first and stops at the retention cap (FIFO eviction takes the files with it), `deleteRecord` removes index entry and file together, `deleteEndedAfter` purges exactly the records that ended inside the answer window, the seen-mark only moves forward, a corrupt index reads as empty and the next write heals it, `pruneOrphans` sweeps files the index no longer names, and a failed file write stores nothing and reports the failure |
+| `history/HistoryBadgeTest` | 3 | The badge's unread derivation — a record is unread when it ended after `lastViewedAt`, `markSeen` clears it, and a record that ended before the last viewing never lights the badge |
+| `features/history/reducer/HistoryReducersTest` (`:features:history`) | 11 | The five history reducers against stubs: `Open` marks everything seen at the clock's value (a clock behind the last visit does not resurrect seen records), `Close` changes nothing and leaves the playing record alone, `PlayRecord` looks the record up and starts the replay (and does nothing for an id that has vanished from the store), `StopRecordPlayback` silences a running replay (a no-op when nothing is playing), and `DeleteRecord` — four cases — stops a playing record before deleting it even when the mirrored `playingId` is stale (it reads the controller's live id, flushes the player, and drops the row from the returned state), and leaves a *different* record's replay alone |
+| `features/history/HistoryViewModelTest` (`:features:history`) | 3 | The H14 merge: a deleted row disappears from the open list and stays gone; async mirror updates that land **while an action is suspended** survive the action's state assignment (a reducer handing back the stale dispatch-time snapshot cannot resurrect the deleted row or lose the playing id — fails against the pre-fix raw assignment); and a replay started mid-`PlayRecord` keeps its mirrored playing id |
+| `features/history/HistoryViewModelMergeAdversarialTest` (`:features:history`) | 4 | Adversarial cases on the H14 merge, written by the verification pass (separate from the coder's `HistoryViewModelTest`), targeting the rules that suite does not pin: the two mirror fields are decided *independently* (a reducer move of one survives while the other takes the collector's fresher value); a store re-emission landing between dispatch and assignment neither resurrects the deleted row nor is clobbered by the delete's local filter; deleting a *non*-playing row leaves the running replay untouched through the whole VM graph; deleting the playing row stops it exactly once without ever tearing the device down — the same player instance keeps accepting frames afterwards |
+| `features/history/HistoryDurationFormatTest` (`:features:history`) | 6 | The C-6/R1 `mm:ss` contract: `formatDuration` rounds to the nearest second (half-up) instead of truncating — the QA symptom was a record at the frame-granular 2-minute cap (`durationMs` undershoots 120 000, e.g. 119 960) displaying "1:59"; it must display "2:00" |
+| `features/history/HistoryDurationFormatEdgeTest` (`:features:history`) | 4 | Edge cases on the same rounding contract: carries across the minute boundary (99 500 → "1:40", not "1:39" or "1:100"), two-digit second padding after a carry, values at the far side of the cap, and small negative inputs — the store can only produce non-negative durations, so the contract there is just "never throw, never a malformed string" |
+
+These run in `commonTest`/`jvmCommonTest` with fakes for the transport, the audio contracts and the
+history store; the Android-only wiring they stand in for — the started-Activity foreground count,
+the real `AudioTrack` at wire rate, the files under `<filesDir>/history/` — is exercised on
+emulators by [`voice-history-test-plan.md`](voice-history-test-plan.md).
 
 ### Transport security
 
@@ -53,20 +93,29 @@ actually running each command, not by arithmetic on the table.
 
 ## Compose UI tests (47, all passing)
 
-Run on a device: `ANDROID_SERIAL=<serial> ./gradlew :shared:connectedDebugAndroidTest`. Verified on
-both a 1080x2400 phone (API 35, portrait branch) and a 2560x1600 tablet (API 34, landscape branch).
-The same instrumented source set also carries `data/settings/SettingsDataStoreMigrationTest` (3
+Run on a device: `ANDROID_SERIAL=<serial> ./gradlew :core:connectedDebugAndroidTest :shared:connectedDebugAndroidTest :features:main:connectedDebugAndroidTest :features:settings:connectedDebugAndroidTest`
+— since Phase 2 the screen tests live with their screens, and since step 5 of the module-graph
+refactor `PTTButtonTest` lives in `:core` with the widget it tests, so the 47 split 7 in `:core`
+(`PTTButtonTest`), 15 in `:features:main` (`MainScreenTest`) and 25 in `:features:settings`
+(`SettingsScreenTest`). Verified on both a 1080x2400 phone (API 35, portrait branch) and a
+2560x1600 tablet (API 34, landscape branch).
+The `:shared` instrumented source set also carries `data/settings/SettingsDataStoreMigrationTest` (3
 tests, always runs) and `network/TlsRelayIntegrationTest` (3 tests, opt-in — see "Pinned TLS against
-a real relay" below), which is where the full 53 in the command at the top of this page comes from.
+a real relay" below), which is where the full 53 across the four modules in the command at the top
+of this page comes from.
 
-| Test class | Tests | What it pins down |
-|---|---|---|
-| `ui/PTTButtonTest` | 7 | The gesture. The microphone request leaves on touch-**down**, not on release; **the release still fires when the button is disabled mid-press** and when the status changes mid-press (known-issues #20 — losing that release strands the talk floor with the microphone open); a dead control ignores touches and offers no click action; the face carries a word, not just a colour; TalkBack gets a toggle action |
-| `ui/MainScreenTest` | 15 | What the screen says and what it dispatches: ready/offline/receiving/pending wording, the offline card showing the address it cannot reach, the missing-permission case offering the fix, channel stepping and its disabled ends, the channel locked while transmitting, error dismissal, connect/disconnect, and the gear. Plus the audio-out pill: the live route named in words rather than only coloured, the earpiece key dispatching `SetAudioOutput` with the live one reading as selected, and a platform with one output device (`canRouteAudioOutput = false`) getting the slider and no route keys |
-| `ui/SettingsScreenTest` | 25 | The form's two jobs: making a broken relay address impossible to save, and showing the URL it will actually dial. Default hides the address rather than pre-filling a field; choosing Custom reveals it and switching back keeps what was typed; a blank address, an out-of-range port and credentials in the URL each block Save with their own message; a pasted `https://` tunnel URL brings 443 with it and turns encryption on, and turning encryption back off keeps that port instead of silently dropping to 80. Plus the security fields: the fingerprint box appears only with encryption on, a half-typed fingerprint cannot be saved, an empty one can (a tunnel needs no pin), the token is masked and saved trimmed, and hosting a relay while asking for encryption is called out. Plus the appearance/language selectors: theme and language can each be forced independently of the system, and the stored value of each comes back as the selected segment |
+| Test class | Module | Tests | What it pins down |
+|---|---|---|---|
+| `ui/PTTButtonTest` | `:core` | 7 | The gesture. The microphone request leaves on touch-**down**, not on release; **the release still fires when the button is disabled mid-press** and when the status changes mid-press (known-issues #20 — losing that release strands the talk floor with the microphone open); a dead control ignores touches and offers no click action; the face carries a word, not just a colour; TalkBack gets a toggle action |
+| `ui/MainScreenTest` | `:features:main` | 15 | What the screen says and what it dispatches: ready/offline/receiving/pending wording, the offline card showing the address it cannot reach, the missing-permission case offering the fix, channel stepping and its disabled ends, the channel locked while transmitting, error dismissal, connect/disconnect, and the gear. Plus the audio-out pill: the live route named in words rather than only coloured, the earpiece key dispatching `SetAudioOutput` with the live one reading as selected, and a platform with one output device (`canRouteAudioOutput = false`) getting the slider and no route keys |
+| `ui/SettingsScreenTest` | `:features:settings` | 25 | The form's two jobs: making a broken relay address impossible to save, and showing the URL it will actually dial. Default hides the address rather than pre-filling a field; choosing Custom reveals it and switching back keeps what was typed; a blank address, an out-of-range port and credentials in the URL each block Save with their own message; a pasted `https://` tunnel URL brings 443 with it and turns encryption on, and turning encryption back off keeps that port instead of silently dropping to 80. Plus the security fields: the fingerprint box appears only with encryption on, a half-typed fingerprint cannot be saved, an empty one can (a tunnel needs no pin), the token is masked and saved trimmed, and hosting a relay while asking for encryption is called out. Plus the appearance/language selectors: theme and language can each be forced independently of the system, and the stored value of each comes back as the selected segment |
 
 These cover the layer the JVM tests cannot reach: gesture lifecycle, semantics, and the wiring
 from a rendered control to a `MainAction`.
+
+Not covered here: `HistoryScreen` and the top-bar badge have no Compose test — the rules they
+display (badge derivation, play/stop/delete reachability) live in reducers the JVM tests cover, and
+the screen itself is exercised on devices by the two-emulator plan below.
 
 Testability came from two seams: `network/PttConnection` (so the transport can be faked) and
 `audio/AudioContracts.kt` (`VoiceRecorderContract`/`VoicePlayerContract`, since `AudioRecord` and
@@ -94,6 +143,12 @@ used, and what to look for:
    to skip the permission screen), press HOME, and confirm the bubble draws over the launcher. Hold
    it to talk — it should turn red, the system microphone privacy indicator should appear, and the
    peer should see the transmission. Drag it and confirm the position survives.
+6b. **Volume keys / headset**: enable **Volume keys and headset button** in Settings. With the app
+   open, `adb shell input keyevent --longpress KEYCODE_VOLUME_UP` should start a transmission and
+   the volume must not change (a real hold is the better test: release should stop it). For the
+   headset path, press HOME, then pair a Bluetooth headset or send
+   `adb shell input keyevent KEYCODE_HEADSETHOOK`; confirm the peer hears it and
+   `dumpsys media_session` lists `ptt-headset` as active. Turn the setting off and confirm both stop.
 7. **Widget**: long-press the home screen → Widgets → PTTdroid → drag it out. Confirm it shows live
    status, then tap TALK and confirm the peer sees it and the widget flips to "Talking"/"STOP".
 8. **Reconnect**: kill the server. Logcat should show growing jittered delays
@@ -113,6 +168,10 @@ adb -s <serial> shell cat /sdcard/ui.xml | grep -oE 'text="[^"]*"'
 adb -s <serial> exec-out screencap -p > shot.png
 adb -s <serial> shell input swipe X Y X Y 5000     # press and hold
 ```
+
+The voice-history feature extends this procedure with its own backgrounded-capture cases and a
+regression pass over every step above: [`voice-history-test-plan.md`](voice-history-test-plan.md).
+It reuses these same preconditions and helpers.
 
 ## Pinned TLS against a real relay (opt-in)
 
@@ -157,9 +216,10 @@ no `.p12`.
 
 ## iOS
 
-`shared/src/iosMain` has no unit tests of its own — Kotlin/Native tests for `iosArm64`/
-`iosSimulatorArm64` need a real Apple toolchain to *execute* (this repository's regular machine and
-`ci.yml` are Linux, which can only frontend-compile iOS Kotlin — see `docs/platform-support.md`).
+`shared/src/iosMain` and `ui-shell/src/iosMain` have no unit tests of their own — Kotlin/Native
+tests for `iosArm64`/`iosSimulatorArm64` need a real Apple toolchain to *execute* (this repository's
+regular machine and `ci.yml` are Linux, which can only frontend-compile iOS Kotlin — see
+`docs/platform-support.md`).
 `.github/workflows/ios.yml` (`macos-latest`) is the only place iOS code actually links and runs,
 and even there the check is "does the framework link and does `iosApp.xcodeproj` build", not a test
 suite. Everything `commonTest`/`jvmCommonTest` already covers (the domain layer, the reducers, the
@@ -176,14 +236,16 @@ unverified beyond "it frontend-compiles" until a real device or the macOS CI job
 - The TLS integration test is opt-in and not part of the default gate, because it needs a relay
   it cannot start itself.
 - No automated tests at all for `:desktopApp`'s or iOS's own thin entry points (`Main.kt`,
-  `MainViewController.kt`) — everything they wire together is covered by `:shared`'s tests, but the
-  wiring itself is smoke-tested by hand (`:desktopApp:packageDeb` + running the result;
-  `ios.yml`'s Xcode build).
+  `:ui-shell`'s `MainViewController.kt`) — everything they wire together is covered by `:shared`'s
+  and the feature modules' tests, but the wiring itself is smoke-tested by hand
+  (`:desktopApp:packageDeb` + running the result; `ios.yml`'s Xcode build).
 - `deploy/deploy.sh` in the server repo has its preflight and failure paths exercised, and a
   `--dry-run` mode, but the remote half is not covered by an automated test — it needs a second
   host.
 
 ## Related
 
+- [`voice-history-test-plan.md`](voice-history-test-plan.md) — the two-emulator run sheet for the
+  history feature, plus the regression pass
 - [`platform-support.md`](platform-support.md) — what each platform has and does not have, and
   where each number in this document comes from

@@ -29,3 +29,17 @@ expect val canHostRelay: Boolean
  * The volume slider is not gated on this — every platform can attenuate what it plays.
  */
 expect val canRouteAudioOutput: Boolean
+
+/**
+ * Whether this platform can draw a floating push-to-talk button over other apps. Only Android
+ * has an overlay window; desktop and iOS hide the setting rather than show a switch that does
+ * nothing. [com.github.devapro.pttdroid.data.settings.AppSettings.floatingButtonEnabled] is
+ * still stored and round-tripped, like `hostServerEnabled` under [canHostRelay].
+ */
+expect val canShowFloatingButton: Boolean
+
+/**
+ * Whether the platform has hardware keys the app can take as a push-to-talk button (Android's
+ * volume keys and headset media button). Desktop and iOS hide the setting.
+ */
+expect val canUseHardwareButtons: Boolean

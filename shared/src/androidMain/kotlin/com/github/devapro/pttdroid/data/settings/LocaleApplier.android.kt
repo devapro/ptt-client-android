@@ -25,6 +25,14 @@ import java.util.Locale
 private val systemLocale: Locale = Locale.getDefault()
 
 /**
+ * The [Locale] [mode] resolves to for display purposes: its own tag, or the pristine device
+ * locale for [LanguageMode.SYSTEM] — the same rule [applyLocale] and
+ * [applyLanguagePreference] must not diverge on.
+ */
+internal fun displayLocaleFor(mode: LanguageMode): Locale =
+    mode.tag?.let(Locale::forLanguageTag) ?: systemLocale
+
+/**
  * Returns a [Context] configured for [mode], for [Context.attachBaseContext] /
  * [android.app.Application.onCreate] to apply.
  *
@@ -40,7 +48,7 @@ private val systemLocale: Locale = Locale.getDefault()
  */
 @Suppress("AppBundleLocaleChanges")
 fun applyLocale(base: Context, mode: LanguageMode): Context {
-    val locale = mode.tag?.let(Locale::forLanguageTag) ?: systemLocale
+    val locale = displayLocaleFor(mode)
     Locale.setDefault(locale)
 
     val config = Configuration(base.resources.configuration)

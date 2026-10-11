@@ -3,13 +3,46 @@
 Namespace `com.github.devapro.pttdroid`. Self-rolled MVI for the UI, with all session state owned
 by one application-scoped controller.
 
-**Compose Multiplatform, four modules, three shipped platforms.** `:shared` is a Kotlin
-Multiplatform module (`androidTarget` + `jvm("desktop")` + `iosArm64`/`iosSimulatorArm64`, the last
-two behind a build guard — see the iOS paragraph below) holding everything platform-independent:
-`domain/`, `mvi/`, `model/`, `data/settings/`, `network/`, the Compose UI (`ui/`), the fifteen
-`reducer/`s, `MainActivityViewModel`, and the platform-independent half of the Koin graph
-(`di/SharedDi.kt`). A `PttLog` Kermit facade replaces Timber for all of this code, since Timber is
-Android-only. Below `commonMain`, three more source sets carry platform-specific code:
+**Compose Multiplatform, one module graph, three shipped platforms.** The module-graph refactor's
+target shape (landed through step 6 — the screens are Voyager `Screen` destinations now):
+
+```
+:shared                  foundation — build identity unchanged
+:core         ->shared   MVI infra + shared widgets (`mvi/`, `ui/components/` — moved out of
+                         `:shared` in step 5 with their package names unchanged; `:shared`
+                         must never depend back on `:core` — Gradle cycle. `:core` keeps
+                         `:shared` as `implementation`: every consumer of its widget/view-model
+                         base types depends on `:shared` (or on a module that does) directly.
+                         No `composeResources/` here, ever — it generates an empty
+                         `pttdroid.core.generated.resources.Res` and that must stay unused)
+:features-api:{main,settings,history}   the Voyager `Screen` destinations (each `Content()`
+                         koinInjects its own factory), the XxxScreenFactory contract types,
+                         and each slice's own state/action vocabulary; `api` on voyager-navigator
+:features:{main,settings,history}       the screens with their self-sufficient roots, plus each
+                         slice's whole MVI stack — -> :shared + :core + own api
+                         (:features:main additionally *contract-only* on :features-api:{settings,history}
+                         to push those destinations; no :features:x -> :features:y edge exists)
+:ui-shell   -> :shared, :core, all features    root hosts: `App()` (iOS) and
+                         `rememberPttHostUiEffects` (the desktop/iOS PttUiEffects);
+                         exports the PTTdroidShared iOS framework
+:app / :desktopApp  -> :ui-shell (+ :shared; :app also -> :core directly, for the ViewModels'
+                         MviViewModel supertype — see core/build.gradle.kts' dependency comment)
+```
+
+`:shared` is a Kotlin Multiplatform module (`androidTarget` + `jvm("desktop")` +
+`iosArm64`/`iosSimulatorArm64`, the last two behind a build guard — see the iOS paragraph below)
+holding everything platform-independent: `domain/`, `model/`, `data/settings/`, `history/`,
+`network/`, the shared UI foundation that must stay below `:core` (`ui/PttUiStatus.kt`, `ui/theme/`), and the
+platform-independent half of the Koin graph (`di/SharedDi.kt`) — plus **all `composeResources/`**
+(single resource owner: every other
+module reads `:shared`'s generated `Res` at
+`com.github.devapro.pttdroid.shared.resources`, whose `publicResClass = true` exists for exactly
+that; the resource package and its APK asset path are a documented packaging check and `:shared`
+is also the module below everything, so neither the resources nor `PttUiStatus`/`theme` may move to
+`:core`). Since Phase 2 the three screens and `App.kt` are *not* in `ui/` any more — see the package
+map below for where they went; since step 5 neither are `mvi/` and `ui/components/` — they live in
+`:core`, under the same package names. A `PttLog` Kermit facade replaces Timber for all of this code, since
+Timber is Android-only. Below `commonMain`, three more source sets carry platform-specific code:
 
 - **`jvmCommonMain`** — the intermediate source set shared by `androidMain` and `desktopMain` (both
   `dependsOn` it), for JVM-only code neither Android nor desktop needs to duplicate:
@@ -19,33 +52,42 @@ Android-only. Below `commonMain`, three more source sets carry platform-specific
   exist on iOS — `javax.net.ssl` and Ktor's CIO engine are JVM-only APIs — so this source set is
   what lets Android and desktop share them without iOS being forced to provide a stub. `androidMain`
   and `desktopMain` themselves hold only what's left after that: each platform's own `DataStore`
-  wiring and Koin module.
-- **`androidMain`** — `createAndroidSettingsDataStore(Context)`, `SharedDiAndroid.kt`.
+  wiring (settings and history) and Koin module.
+- **`androidMain`** — `createAndroidSettingsDataStore(Context)`, `createAndroidHistoryDataStore(Context)`,
+  `SharedDiAndroid.kt`.
 - **`desktopMain`** — `DesktopVoiceRecorder`/`DesktopVoicePlayer` (`javax.sound.sampled`),
-  `createDesktopSettingsDataStore()`, `SharedDiDesktop.kt`.
+  `createDesktopSettingsDataStore()`, `createDesktopHistoryDataStore()`, `SharedDiDesktop.kt`.
 
 `:app` is the Android application launcher: `MainActivity`, `service/`, `overlay/`, `widget/`, the
 Android-only half of DI (`di/AppDi.kt` — `VoiceRecorder`, `VoicePlayer`, `OverlayController`,
 `ServicePttSessionLauncher`), and everything else genuinely Android-only (audio capture/playback,
-the foreground service, the widget, the overlay) — 13 Kotlin files in total; everything else that
-used to live here moved to `:shared` over the course of the migration. `:desktopApp` hosts the real
-shared UI in a `Window {}` and starts Koin itself; its `PttSessionLauncher` just calls
+the foreground service, the widget, the overlay, the `foreground/ActivityForegroundTracker`
+started/stopped-count that answers `domain/ForegroundProvider`) — 14 Kotlin files in total;
+everything else that used to live here moved to `:shared` over the course of the migration. Since
+Phase 2 it also depends on `:ui-shell`; since step 6 `MainActivity` renders the Voyager
+`Navigator(MainScreen)` itself, wrapped in the Activity's own `PttUiEffects` host.
+`:desktopApp` hosts the real shared UI in a `Window {}` and starts Koin itself; its
+`PttSessionLauncher` just calls
 `PttController.start()`/`stop()` directly (no foreground-service concept to start first). See
 [`audio-pipeline.md`](audio-pipeline.md#desktop-capture--playback) for its recorder/player. The
 package map below marks which module each package lives in; treat it as the source of truth over
 the paragraph above.
 
-**iOS.** `:shared` declares `iosArm64()`/`iosSimulatorArm64()` targets (**not**
-`iosX64()` — Compose Multiplatform publishes no `iosX64` artifact variant, confirmed against Maven
-Central for every release back to 1.8.2; see the comment in `shared/build.gradle.kts`), each
-producing a static `PTTdroidShared` framework, but only when the build can actually compile them
+**iOS.** The `PTTdroidShared` framework is exported by `:ui-shell` (since Phase 2 — `:shared`'s
+iOS targets still exist and still carry the platform actuals, but produce a klib only).
+`iosArm64()`/`iosSimulatorArm64()` are declared there (**not** `iosX64()` — Compose Multiplatform
+publishes no `iosX64` artifact variant, confirmed against Maven Central for every release back to
+1.8.2; see the comment in `shared/build.gradle.kts`), as a static `PTTdroidShared` framework, but
+only when the build can actually compile them
 — a real Mac host, or `-PenableIosTargets=true` (passed by `.github/workflows/ios.yml`'s macOS
 runner). This machine is Linux, which cannot link or run Kotlin/Native Apple binaries, so the
 targets are absent from a plain `./gradlew build` here; see the guard in
-`shared/build.gradle.kts`. Linux *can*, however, frontend-compile (klib, not link) Apple targets —
-`-PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64`/`compileKotlinIosArm64` both
-succeed here as of Phase 7b, and were the primary feedback loop for everything under `iosMain`.
-`iosMain` holds iOS actuals for the same three seams every other platform has:
+`shared/build.gradle.kts` (copied into every KMP module's build file). Linux *can*, however,
+frontend-compile (klib, not link) Apple targets —
+`-PenableIosTargets=true :ui-shell:compileKotlinIosSimulatorArm64`/`compileKotlinIosArm64` pull in
+`:shared`'s, `:core`'s and the feature modules' iOS compilations as dependency tasks, both succeed
+here, and they are the primary feedback loop for everything under any `iosMain`.
+`:shared`'s `iosMain` holds iOS actuals for the same three seams every other platform has:
 `createPttHttpClient`/`describePlatformCause` (Darwin engine + a hand-rolled DER-SHA-256 pinning
 check — see the Transport security section below), the settings `DataStore`
 (`<Documents>/settings.preferences_pb`), and `IosPttSessionLauncher` (calls
@@ -53,10 +95,15 @@ check — see the Transport security section below), the settings `DataStore`
 `IosVoiceRecorder`/`IosVoicePlayer` are real `AVAudioEngine`-backed implementations as of Phase 7b
 — capture taps the hardware's native format and converts to 16 kHz mono PCM16 via an explicit
 `AVAudioConverter`; playback is an `AVAudioSourceNode` pull render node fed by a small ring buffer.
-See [`audio-pipeline.md`](audio-pipeline.md#ios-capture--playback) for the full picture. `ui/App.kt`'s
-`App()` composable is the iOS entry point's UI root (`iosMain/.../MainViewController.kt` →
-`iosApp/iosApp/ContentView.swift`); it is new rather than a refactor of `MainActivity`/
-`:desktopApp`'s `Main.kt` into a shared root — see `App()`'s own KDoc for why. Because none of
+See [`audio-pipeline.md`](audio-pipeline.md#ios-capture--playback) for the full picture.
+`:ui-shell`'s commonMain `App()` composable is the iOS entry point's UI root
+(`:ui-shell`'s `iosMain/.../MainViewController.kt` → `iosApp/iosApp/ContentView.swift`, calling
+`MainViewControllerKt.MainViewController()` — the Objective-C name derives from the *file* name,
+which is why the Phase 2 move out of `:shared` needed no Swift change; the Xcode build phase now
+runs `:ui-shell:embedAndSignAppleFrameworkForXcode`); it is new rather than a refactor of
+`MainActivity`/ `:desktopApp`'s `Main.kt` into a shared root — see `App()`'s own KDoc for why, and
+the shared `Navigator(MainScreen)` + `LocalPttUiEffects` hosting for what the three roots *do*
+share. Because none of
 this can be *linked or run* on this Linux machine — only frontend-compiled — iOS correctness is
 still established by `.github/workflows/ios.yml`, a macOS CI job — treat anything under `iosMain`/
 `iosApp/` as compile-verified but link/runtime-unverified until that job is green.
@@ -89,7 +136,7 @@ down a transmission in flight.
 
 | Package | Contents | Module |
 |---|---|---|
-| `domain/` | `PttController`, `PttState` + `ConnectionStatus`, `ReconnectPolicy`, `KeepalivePolicy`, `PttSessionLauncher`, `canHostRelay`/`canRouteAudioOutput` (`expect val`s — see below) — commonMain; `canHostRelay = true` — jvmCommonMain; `canRouteAudioOutput = true` — androidMain, `= false` — desktopMain (the one capability the two JVM targets answer differently, so it cannot live in `jvmCommonMain`); `IosPttSessionLauncher`, `canHostRelay = false`, `canRouteAudioOutput = true` — iosMain | `:shared` |
+| `domain/` | `PttController`, `PttState` + `ConnectionStatus`, `ReconnectPolicy`, `KeepalivePolicy`, `PttSessionLauncher`, the `UtcClock`/`ForegroundProvider` fun-interface seams (see [History capture](#history-capture)) — commonMain, with `JvmUtcClock`/`IosUtcClock` in jvmCommonMain/iosMain; `canHostRelay`/`canRouteAudioOutput` (`expect val`s — see below): `canHostRelay = true` — jvmCommonMain; `canRouteAudioOutput = true` — androidMain, `= false` — desktopMain (the one capability the two JVM targets answer differently, so it cannot live in `jvmCommonMain`); `IosPttSessionLauncher`, `canHostRelay = false`, `canRouteAudioOutput = true` — iosMain | `:shared` |
 | `network/` | `PttConnection` (interface), `PttEndpoint`, `protocol/Messages.kt` — all commonMain; `KtorPttConnection` (commonMain, calls the `createPttHttpClient`/`describePlatformCause` `expect`s); `tls/PinnedTrust.kt`, `PttHttpClient.jvm.kt` — jvmCommonMain (JVM-only: OkHttp, `javax.net.ssl`); `tls/PinnedTrust.ios.kt`, `PttHttpClient.ios.kt` — iosMain (Darwin engine, `CommonCrypto`/`Security` cinterop) | `:shared` |
 | `audio/` | `AudioConfig`, `AudioContracts` (contracts), `FrameAccumulator`, `PcmGain` — commonMain; `VoiceRecorder`, `VoicePlayer` (Android `AudioRecord`/`AudioTrack` + `AudioManager` routing) — `:app`; `DesktopVoiceRecorder`, `DesktopVoicePlayer` (`javax.sound.sampled`) — `:shared` desktopMain; `IosAudioSession`, `IosVoiceRecorder`, `IosVoicePlayer` (`AVAudioEngine`/`AVAudioConverter`/`AVAudioSourceNode`, Phase 7b) — `:shared` iosMain | `:shared` commonMain / desktopMain / iosMain, and `:app` |
 | `service/` | `PttForegroundService`, `PttNotifications`, `PttServiceCommands` | `:app` |
@@ -97,81 +144,126 @@ down a transmission in flight.
 | `widget/` | `PttWidget`, `PttWidgetAction`, `PttWidgetReceiver`, `PttWidgetUpdater` | `:app` |
 | `internalserver/` | `InternalPttServer` — optional on-device relay (Ktor CIO server, JVM-only, unreachable from iOS — see `domain/canHostRelay`) | `:shared` jvmCommonMain |
 | `data/settings/` | `AppSettings`, `ServerMode`, `ServerAddress`, `ThemeMode`, `LanguageMode`, `AudioOutput`, `CertificatePin`, `SettingsRepository` (takes a `DataStore<Preferences>` directly) — commonMain; `createAndroidSettingsDataStore(Context)`/`createDesktopSettingsDataStore()`/`createIosSettingsDataStore()` — plain platform functions, not `expect`/`actual`, called only from each platform's own DI module — see [Transport security](#transport-security) below for the trust-manager seam and the "Settings storage" note for the DataStore one | `:shared` |
-| `mvi/` | `ActionProcessor`, `Reducer`, `MviViewModel` | `:shared` commonMain |
-| `model/` | `MainAction`, `ScreenState`, `MainEvent` | `:shared` commonMain |
-| `reducer/` | one reducer per action (15) | `:shared` commonMain |
-| `ui/` | `PttUiStatus` (the shared state→presentation mapping), `MainScreen`, `SettingsScreen`, `App()` (iOS's UI root, `App.kt`), `components/`, `theme/`, `viewmodel/MainActivityViewModel` | `:shared` commonMain |
-| `di/` | `SharedDi.kt` (platform-independent graph) — `:shared` commonMain; `SharedDiAndroid.kt`/`SharedDiDesktop.kt`/`SharedDiIos.kt` (platform providers), `KoinIos.kt` (`initKoinIos()`, iOS's Koin entry point) — `:shared` androidMain/desktopMain/iosMain; `AppDi.kt` (Android-only: `VoiceRecorder`, `VoicePlayer`, `OverlayController`, `ServicePttSessionLauncher`) — `:app` | split across `:shared` and `:app` |
-| `MainViewController.kt` | `MainViewController()` — hosts `App()` via `ComposeUIViewController`, called from `iosApp/iosApp/ContentView.swift` | `:shared` iosMain |
+| `history/` | the voice-record history module (see [History capture](#history-capture)): `VoiceRecord` (the `@Serializable` index entry), `Wav` (hand-rolled RIFF/PCM16LE codec), `HistoryFileStorage`/`HistoryStore` (interfaces) and `DataStoreHistoryStore` (the JSON-index store), `BackgroundRecordCapture` (the floor-bounded recorder), `HistoryPlayback` (the file-pump replay), `HistoryBadge` (the single derivation of the Main-screen unread badge) — commonMain; `JvmHistoryFileStorage` (`java.io`) — jvmCommonMain, `IosHistoryFileStorage` (okio + `NSFileManager`, plus `createIosHistoryDataStore()`) — iosMain; `createAndroidHistoryDataStore(Context)`/`createDesktopHistoryDataStore()` (`data/history/HistoryDataStore.*`) — androidMain/desktopMain | `:shared` |
+| `mvi/` | `ActionProcessor`, `Reducer`, `MviViewModel` | `:core` commonMain (package unchanged; left `:shared` in step 5 of the refactor) |
+| `model/` | `UiEvent` — the single event-channel type all three feature loops carry (it stays in `:shared` because Main, Settings and History each emit it) | `:shared` commonMain |
+| `ui/` | `PttUiStatus` (the shared state→presentation mapping) and `theme/` — `:shared` commonMain; `components/` (`PTTButton`, `StatusCard`, `AudioOutputControl`, `ChannelSelector`, `ErrorBanner`, plus `UiStatusColor.kt` — the one `PttUiStatus`→Compose-colour extension, kept `internal` to `:core` with its only two consumers) — `:core` commonMain, packages unchanged | split: `:shared` (`PttUiStatus.kt`, `theme/`) and `:core` (`components/`) commonMain |
+| `features-api/*` | `MainScreen`/`SettingsScreen`/`HistoryScreen` (Voyager-`Screen`-supertyped destination contracts), the `XxxScreenFactory` interfaces, and each slice's own state/action vocabulary — `MainState`/`MainAction`, `SettingsState`/`SettingsAction`/`SettingsFormState`/`SettingsEdit`, `HistoryState`/`HistoryAction` — one module per screen, package `com.github.devapro.pttdroid.features.api.<name>` | `:features-api:{main,settings,history}` commonMain |
+| `features/*` | the screens with their private subcomposables and previews, plus each slice's whole MVI stack — `XxxViewModel`, `XxxActionProcessor`, the feature's `reducer/`s — and the `register<Name>ScreenDi()` Koin entry: `MainScreen.kt` (+`MainScreenFactoryImpl`, 9 reducers), `SettingsScreen.kt` (+impl, 6 reducers), `HistoryScreen.kt` (+impl, 5 reducers), package `com.github.devapro.pttdroid.features.<name>` | `:features:{main,settings,history}` commonMain |
+| `uishell/` | `App()` (iOS's UI root: theme + language + `Navigator(MainScreen)` under a `LocalPttUiEffects` host), `rememberPttHostUiEffects` (the desktop/iOS `PttUiEffects` implementation — `:app` builds its own against the Activity), `MainViewController()` (iOS's `ComposeUIViewController` entry), `initKoinIos()`. The interim `PttScreenHost`/`NavDestination` router that lived here was deleted in step 6 | `:ui-shell` commonMain / iosMain |
+| `di/` | `SharedDi.kt` (platform-independent graph; hosts the `HISTORY_DATA_STORE` qualifier next to `SESSION_SCOPE`) — `:shared` commonMain; `SharedDiAndroid.kt`/`SharedDiDesktop.kt`/`SharedDiIos.kt` (platform providers) — `:shared` androidMain/desktopMain/iosMain; `KoinIos.kt` (`initKoinIos()`, iOS's Koin entry point — `:ui-shell` iosMain since Phase 2) ; `AppDi.kt` (Android-only: `VoiceRecorder`, `VoicePlayer`, `OverlayController`, `ServicePttSessionLauncher`, `ForegroundProvider` ← `ActivityForegroundTracker`) — `:app` | split across `:shared`, `:ui-shell` and `:app` |
+| `MainViewController.kt` | `MainViewController()` — hosts `App()` via `ComposeUIViewController`, called from `iosApp/iosApp/ContentView.swift` | `:ui-shell` iosMain (moved out of `:shared` in Phase 2) |
 
 ## The MVI loop
 
+There are **three independent MVI loops**, one per screen, each living entirely in its own
+`:features:<name>` module and speaking only its own action and state types. The loop shape is
+identical in all three (shown for Main; `SettingsViewModel`/`HistoryViewModel` differ only in
+types):
+
 ```
-Compose ──onAction(MainAction)──▶ MainActivityViewModel
-                                      │
-                                      ▼
-                            MainActionProcessor
-                       (finds the Reducer for action::class)
-                                      │
-                                      ▼
+Compose screen ──onAction(MainAction)──▶ MainViewModel (:features:main)
+                                              │
+                                              ▼
+                                     MainActionProcessor
+                                (finds the Reducer for action::class)
+                                              │
+                                              ▼
                     Reducer.reduce(action, state) ──▶ Result(state, nextAction?, event?)
-                                      │
-                     ┌────────────────┼────────────────┐
-                     ▼                ▼                ▼
-              _state update      re-dispatch      _event channel
+                                              │
+                     ┌────────────────────────┼────────────────┐
+                     ▼                        ▼                ▼
+              _state update            re-dispatch       _event channel (UiEvent)
                      │
                      ▼
-              Compose recomposes
+              that screen recomposes
 ```
 
-`ActionProcessor` (`mvi/ActionProcessor.kt`) takes `Set<Reducer<out ACTION, …>>`, validates that
-action classes are unique **once at construction**, and indexes reducers by `KClass` so dispatch is
-a map lookup.
+Since step 6 nothing above the screens resolves any of them: each screen's root — the
+`<Name>ScreenFactoryImpl` its `:features-api` `Screen` destination composes — collects its **own**
+`ViewModel`'s state and event channel and dispatches its own actions, so the
+three loops are independent by construction and not by convention. **Navigation is not any loop's
+action**: which screen is up is the Voyager `Navigator`'s stack (`MainScreen` is the root; the
+gear and history buttons `push` their `Screen` objects, the in-screen arrows `pop`), so no feature
+can navigate by touching someone else's state. The two screens that need seeded state get it once
+per entry — each root dispatches `SettingsAction.Open` / `HistoryAction.Open` from a
+`LaunchedEffect` that re-runs on every push — and leaving Settings is derived from the form going
+seeded → null (see [Settings form state](#settings-form-state)). One consequence of the real stack:
+Android **system back now pops** — from Settings or History it returns to Main instead of exiting
+the app (recorded in [`known-issues.md`](known-issues.md)'s refactor changelog). `ActionProcessor`
+(`:core`'s `mvi/ActionProcessor.kt`) takes `Set<Reducer<out ACTION, …>>`, validates that action
+classes are unique **once at construction**, and indexes reducers by `KClass` so dispatch is a map
+lookup.
 
 Reducers no longer touch sockets or audio — they call `PttController` or `PttSessionLauncher`.
-`ScreenState` embeds `PttState` rather than duplicating connection state.
+The session facts on `MainState`/`HistoryState` are mirrored in from `PttController.state` by the
+view models, never duplicated.
+
+### Main (`MainAction` → `:features:main`)
 
 | Action | Reducer | Effect |
 |---|---|---|
-| `InitConnection` | `InitConnectionReducer` | Starts the foreground service (or asks for the mic permission first) |
+| `InitConnection` | `InitConnectionReducer` | Starts the foreground service (or asks for the mic permission first); also dispatched by `MainViewModel.onMicPermissionResult` when the grant arrives |
 | `Disconnect` | `DisconnectReducer` | Stops the service |
-| `Reconnect` | `ReconnectReducer` | `PttController.restart()` |
 | `Speak` | `StartSpeakReducer` | `requestTalk()` — asks the server for the floor |
 | `StopSpeak` | `StopSpeakReducer` | `releaseTalk()` |
-| `SetChannel(n)` | `SetChannelReducer` | Clamps to 1..99, persists, reconnects |
-| `OpenSettings` / `CloseSettings` | corresponding reducers | Switch the visible screen; the pair now also seeds and clears `ScreenState.settingsForm` |
-| `EditSettings(edit)` | `EditSettingsReducer` | Applies one field change to `ScreenState.settingsForm` |
-| `SaveSettings` | `SaveSettingsReducer` | One atomic DataStore write of `state.settingsForm`, closes Settings, chains to `Reconnect`, emits `ShowMessage` |
-| `RequestOverlayPermission` | `RequestOverlayPermissionReducer` | Forwards `MainEvent.RequestOverlayPermission` for the platform layer to act on |
+| `SetChannel(n)` | `SetChannelReducer` | Clamps to 1..99, skips a no-op change, else persists + reconnects |
 | `DismissError` | `DismissErrorReducer` | `PttController.clearError()` |
 | `SetAudioOutput(o)` | `SetAudioOutputReducer` | Speaker ↔ earpiece: applies to the player, then persists |
 | `SetPlaybackVolume(v)` | `SetPlaybackVolumeReducer` | The slider under a finger — reaches the speaker, writes nothing |
 | `SavePlaybackVolume(v)` | `SavePlaybackVolumeReducer` | The slider let go — one DataStore write for the whole drag |
 
+### Settings (`SettingsAction` → `:features:settings`)
+
+| Action | Reducer | Effect |
+|---|---|---|
+| `Open` | `OpenSettingsReducer` | Seeds `SettingsState.form` once, from a single read of what is on disk (dispatched by the screen root on each push) |
+| `Close` | `CloseSettingsReducer` | Drops the form; the root's seeded → null observer pops back to Main |
+| `EditSettings(edit)` | `EditSettingsReducer` | Applies one `SettingsEdit` to the *current* form |
+| `SaveSettings` | `SaveSettingsReducer` | One atomic DataStore write of the form, drops it, chains to `Reconnect`, emits `ShowMessage`; a rejected save keeps the form and errors instead |
+| `RequestOverlayPermission` | `RequestOverlayPermissionReducer` | Forwards `UiEvent.RequestOverlayPermission` for the platform layer to act on |
+| `Reconnect` | `ReconnectReducer` | `PttController.restart()` |
+
+### History (`HistoryAction` → `:features:history`)
+
+| Action | Reducer | Effect |
+|---|---|---|
+| `Open` | `OpenHistoryReducer` | `markAllSeen` — the badge's read receipt (dispatched by the screen root on each push); flips `HistoryBadge.unread` through the store, touches no state |
+| `Close` | `CloseHistoryReducer` | Deliberately stops nothing — replay survives leaving the list; the root pops back to Main on the action |
+| `PlayRecord(id)` | `PlayRecordReducer` | Looks the record up in the store, `PttController.playHistory()` — refused there while the floor is busy |
+| `StopRecordPlayback` | `StopRecordPlaybackReducer` | `PttController.stopHistoryPlayback()`, no-op when nothing plays |
+| `DeleteRecord(id)` | `DeleteRecordReducer` | Stops playback first if that row is *live*-playing (reads `PttController`'s `historyPlayingId`, never the mirror — #44), which flushes the buffered tail through `VoicePlayerContract.stop()`, then removes file and index entry and drops the row from `records` locally so the open list updates without the persistence round-trip |
+
 ## Settings form state
 
-`ScreenState` carries two fields the rest of this doc's action table above already assumes:
+`SettingsState` (`:features-api:settings`) carries two fields:
 `canDrawOverlay` (default `true`, since desktop and iOS have no "draw over other apps" concept and
-never update it; Android sets it via `MainActivityViewModel.onOverlayPermissionResult`, mirroring
-the existing `micPermissionGranted`) and `settingsForm: SettingsFormState?`, non-null exactly while
-`screen == Screen.Settings`.
+never update it; Android's `MainActivity.onResume` polls the real value and reports it through
+`SettingsViewModel.onOverlayPermissionResult`) and `form: SettingsFormState?`, non-null exactly
+while the Settings screen is up.
 
-`SettingsFormState` (`model/SettingsFormState.kt`) is the settings form's single source of truth —
+`SettingsFormState` (`:features-api:settings`) is the settings form's single source of truth —
 validation rules, the address/TLS interplay, and the final `AppSettings` merge all live there now,
 not in `SettingsScreen`. Before this, the form was thirteen local `remember { mutableStateOf }`
 holders inside the composable, keyed `remember(settings)` on the repository flow. That key re-ran
 on *every* emission from `SettingsRepository`, not just the first one seen after opening Settings —
 so a completely unrelated write while Settings was open (a playback-volume save or an audio-output
 change made from the main screen) silently wiped whatever the user had typed. `OpenSettingsReducer`
-now seeds `settingsForm` once, from a single `SettingsRepository.settings.first()` read, and nothing
-downstream re-keys it; `EditSettingsReducer` is the only thing that ever changes it afterward, one
-`SettingsEdit` at a time.
+now seeds the form once per screen entry (the Settings root dispatches `SettingsAction.Open` from
+a `LaunchedEffect` that re-runs on every push), from a single `SettingsRepository.settings.first()`
+read, and nothing downstream re-keys it; `EditSettingsReducer` is the only thing that ever changes
+it afterward, one `SettingsEdit` at a time.
+
+Leaving the screen is derived from the form, not a field: the Settings root watches
+`form != null` and `navigator.pop()`s back to Main on the seeded → null **edge** — so a save that
+the reducers *reject* (the known-issues #25 validation guards, a second line of defence behind the
+disabled button) leaves the form seeded and the user exactly where they were, edit intact.
 
 The second win is independent of the defect: pulling validation and the `AppSettings` merge out of
 the composable and into a pure, constructor-only type made them reachable from `commonTest` for the
-first time. `SettingsFormStateTest` covers 55 cases — every `*Error` boundary, the address/TLS
-scheme interplay, the channel digit filter — that previously needed an emulator and a rendered
-`SettingsScreen` to exercise at all.
+first time. `SettingsFormStateTest` (in `:features-api:settings`, next to the type) covers 55 cases
+— every `*Error` boundary, the address/TLS scheme interplay, the channel digit filter — that
+previously needed an emulator and a rendered `SettingsScreen` to exercise at all.
 
 ## Talk-floor flow
 
@@ -226,35 +318,55 @@ socket, at which point `PttController.restart()` redials from a clean backoff. T
 including what happens against a relay too old to know `ping`, is
 [`ptt-server/docs/protocol.md#keepalive`](../../ptt-server/docs/protocol.md#keepalive).
 
-## Koin graph (`di/SharedDi.kt`, `SharedDiAndroid.kt`, `SharedDiDesktop.kt`, `SharedDiIos.kt`, `AppDi.kt`)
+## Koin graph (`di/SharedDi.kt`, `SharedDiAndroid.kt`, `SharedDiDesktop.kt`, `SharedDiIos.kt`, `AppDi.kt`, `register*ScreenDi`)
 
-Split across four modules since Phase 5, all loaded together into one graph at `startKoin { }`
+Split across several modules since Phase 5, plus one Koin registration function per feature screen
+since Phase 2, all loaded together into one graph at `startKoin { }`
 (Koin merges every loaded module regardless of which file registers a binding another module's
 definitions depend on):
 
 - **`:shared` commonMain (`SharedDi.kt`)** — everything platform-independent: `CoroutineContextProvider`,
   the named `sessionScope` (`SupervisorJob + Dispatchers.IO`, exposed as the public qualifier
   `SESSION_SCOPE` rather than a private string, since three different modules now need to `get()`
-  against the exact same scope instance), `SettingsRepository`, `KtorPttConnection` (bound to
-  `PttConnection`), `PttController`, all fifteen reducers, `MainActionProcessor`, and
-  `MainActivityViewModel` (`viewModelOf`).
+  against the exact same scope instance), `SettingsRepository`, the `DataStoreHistoryStore` (bound as
+  `HistoryStore`, taking the named `HISTORY_DATA_STORE` and the platform's `HistoryFileStorage`/
+  `UtcClock`), `BackgroundRecordCapture` and `HistoryPlayback` (which `PttController` now requires),
+  `KtorPttConnection` (bound to `PttConnection`), `PttController`, and the `HistoryBadge` single
+  (the Main-screen badge's cross-feature fact — see [History capture](#history-capture)).
 - **`:shared` androidMain / desktopMain (`SharedDiAndroid.kt` / `SharedDiDesktop.kt`)** — each
-  platform's `DataStore<Preferences>` (via `createAndroidSettingsDataStore(androidContext())` /
-  `createDesktopSettingsDataStore()`) and `InternalPttServer` (`jvmDi()` in `SharedDiJvm.kt`,
+  platform's settings `DataStore<Preferences>` (via `createAndroidSettingsDataStore(androidContext())` /
+  `createDesktopSettingsDataStore()`) *and* its history ones (`HISTORY_DATA_STORE` via
+  `createAndroidHistoryDataStore(...)`/`createDesktopHistoryDataStore()`, `HistoryFileStorage` over a
+  platform-chosen directory, `JvmUtcClock`), plus `InternalPttServer` (`jvmDi()` in `SharedDiJvm.kt`,
   `jvmCommonMain`, called from both). Desktop's module additionally binds the real
   `VoiceRecorderContract`/`VoicePlayerContract`/`PttSessionLauncher` implementations
   (`DesktopVoiceRecorder`/`DesktopVoicePlayer`/`DesktopPttSessionLauncher`), since there is
-  no separate "desktop app" module to split those into the way Android has `:app`.
+  no separate "desktop app" module to split those into the way Android has `:app`, and a
+  `ForegroundProvider` hard-wired to `true` — desktop has no foreground/background distinction to
+  sample, which makes history capture inert there by decision (see [History capture](#history-capture)).
 - **`:app` (`AppDi.kt`)** — Android-only classes that need a real `Context`, `AudioRecord`/
   `AudioTrack`, or `PttForegroundService`: `VoiceRecorder`, `VoicePlayer` (bound to their
   contracts; `VoicePlayer` takes `androidContext()` for the `AudioManager` half of the
-  speaker/earpiece routing), `ServicePttSessionLauncher`, `OverlayController`.
+  speaker/earpiece routing), `ServicePttSessionLauncher`, `OverlayController`, and the
+  `ForegroundProvider` answered by `foreground/ActivityForegroundTracker`.
+- **`:features:{main,settings,history}` (commonMain)** — `fun Module.registerMainScreenDi()` /
+  `registerSettingsScreenDi()` / `registerHistoryScreenDi()`, each owning the whole MVI stack of
+  one screen: the feature's reducers (`factoryOf`), its `XxxActionProcessor`, its `XxxViewModel`
+  (**`singleOf`** — since step 6 each screen root resolves its own view model by `koinInject`, so
+  identity has to be structural; Koin 4's `viewModelOf` is a Kind.Factory definition, a fresh
+  instance per `get()`, and a second injection would silently fork a second view model whose
+  events reach no one — known-issues #22's shape), and the `<Name>ScreenFactoryImpl` bound to the
+  `<Name>ScreenFactory` contract from its `:features-api:*` module (`factoryOf(...) bind ...`).
+  Hosts call all three inside one `module { }` block.
 
 `PTTdroidApplication.onCreate()` calls `startKoin { modules(sharedModule, sharedAndroidModule,
-appModule) }`; `:desktopApp`'s `main()` calls `startKoin { modules(sharedModule,
-sharedDesktopModule) }` itself, since there is no `Application` class to do it for it. iOS's
-`initKoinIos()` (`di/KoinIos.kt`, iosMain) does the same with `sharedModule` +
-`sharedIosModule` (`di/SharedDiIos.kt`), called once from `iosApp/iosApp/iOSApp.swift`'s `init()`.
+appModule, module { registerMainScreenDi(); registerSettingsScreenDi(); registerHistoryScreenDi() }) }`;
+`:desktopApp`'s `main()` calls `startKoin { modules(sharedModule, sharedDesktopModule, module { … }) }`
+itself, since there is no `Application` class to do it for it. iOS's
+`initKoinIos()` (`:ui-shell`'s `iosMain/.../KoinIos.kt` — moved out of `:shared` in Phase 2, which
+is what lets it load the feature screen modules at all) does the same with `sharedModule` +
+`sharedIosModule` (`di/SharedDiIos.kt`) + the three `register*ScreenDi()`s, called once from
+`iosApp/iosApp/iOSApp.swift`'s `init()`.
 
 `SettingsRepository` takes a `DataStore<Preferences>` rather than a `Context`, resolved via plain
 `get()` — the platform DI module above is what actually builds it. The Phase 3 stopgap this
@@ -287,7 +399,7 @@ The two platform functions, both in `data/settings/`:
 easy half — nothing here reads `stringResource()`, so DataStore alone does not make a saved
 language show up. Applying it is a genuinely per-platform seam, `applyLanguagePreference()`
 (`data/settings/LanguageApplier.kt`, `expect`/`actual`), paired with `key(languageMode) { ... }`
-around the affected content in `Main.kt` (desktop) and `ui/App.kt` (iOS); Android instead is a
+around the affected content in `Main.kt` (desktop) and `:ui-shell`'s `App.kt` (iOS); Android instead is a
 no-op on that `expect` and forces the language through `Context.attachBaseContext()` +
 `Activity.recreate()` (`LocaleApplier.android.kt`, called once more from
 `PTTdroidApplication.onCreate()` so the notification, widget and overlay bubble get it even
@@ -304,6 +416,83 @@ Android XML (`AndroidManifest.xml`'s `android:label`, `res/xml/ptt_widget_info.x
 `translatable="false"` — it is the product name, and marking it so is also what keeps lint's
 `MissingTranslation` from demanding a translation of it now that locale folders exist under
 `app/src/main/res/`.
+
+## History capture
+
+`history/` is the voice-record history: a transmission that arrives **while the app is in the
+background** is saved so it can be replayed later from `:features:history`'s `HistoryScreen.kt`, which the user
+reaches through the clock icon on `MainScreen` — badged red while any record is newer than the
+last time the list was opened. Everything the feature does and does not save comes down to
+decisions made in its spec interview; they are recorded here because the code alone does not say
+why they are that way.
+
+**The floor is the boundary.** The wire carries no per-transmission metadata — audio frames are
+anonymous — but `floor` messages say exactly who holds the channel, so one record is one remote
+floor hold: a `floor` naming a new remote holder starts a capture, and release (an empty `floor`),
+the floor changing hands, or the session dropping closes it. A hold that never started because we
+were the talker is never recorded.
+
+**Foreground-ness is sampled once, at the record's start** (`domain/ForegroundProvider`, answered
+on Android by `foreground/ActivityForegroundTracker` counting STARTED Activities — the overlay
+bubble and the widget deliberately do not count, since talking through them is exactly the
+background use this feature serves). Two consequences were chosen deliberately: a record that
+began in the background is finished and saved even if the user opens the app mid-transmission —
+the beginning was already missed — and a record that began in the foreground stays unrecorded even
+if the app then backgrounds. Frames buffer in memory, not on disk; a record is capped at two
+minutes of wire audio (3000 × 40 ms frames) as a runaway guard, and a disconnect saves the partial
+rather than dropping it.
+
+**Answering deletes the message.** Taking the floor ourselves purges every record that *ended*
+within the last 30 seconds — not just the newest one, so being answered across a burst of
+voicemails clears the whole burst. This is the user's contract for why a record exists at all:
+it is an unacknowledged call, and once acknowledged it leaves.
+
+**Storage is files + a JSON index, not a database.** The audio is a canonical 44-byte-header WAV
+(`history/Wav.kt`, a hand-rolled codec — the payload is already PCM16LE/16 kHz/mono) written
+whole at record end into a platform directory (Android `filesDir/history`, desktop
+`$XDG_CONFIG_HOME/ptt-client/history`, iOS `<Documents>/history` via okio). The index is a second
+preferences DataStore (`history_index.preferences_pb`, bound under the `HISTORY_DATA_STORE`
+qualifier, same file-shape rationale as `SettingsRepository`) holding one `@Serializable`
+`List<VoiceRecord>` newest-first under a single key — the whole list is read on screen entry and
+rewritten whole on change, which is what keeps the retention FIFO (cap 50, evicted records lose
+file and entry together) one transaction. A corrupt index is read as empty and heals on the next
+write; `PttForegroundService.onCreate` sweeps files the index no longer names
+(`pruneOrphans`). Unread-ness is never stored per record: the badge shows `endedAtMs > lastViewedAt`
+for any record, `markAllSeen(clock.nowMs())` runs when the list opens (monotonic, so a clock jump
+backwards cannot resurrect unread), and there is deliberately no notification — badge only.
+
+**Playback reuses the live speaker and always loses to it.** `HistoryPlayback` pumps the stored
+PCM back through the same `VoicePlayerContract` at wire rate (40 ms per frame — the player's queue
+is bounded and fire-and-forget, so a burst would just be dropped there too), which makes history
+respect the speaker/earpiece and volume preferences for free. Because it is the same single track,
+live audio
+outranks history everywhere: `playHistory` refuses while the floor is busy in any direction, and
+an incoming frame, a disconnect, or the floor changing hands — theirs or ours — silences a running
+replay first. The
+id of what is audible lives in `HistoryPlayback.playingId` (a `StateFlow` the controller mirrors
+into `PttState.historyPlayingId`); leaving the history screen lets playback survive going back to
+Main, and deleting the playing row stops it first. Stopping flushes, not just cancels:
+`VoicePlayerContract.stop()` discards the frames the pump already handed over (a cancelled pump
+would otherwise leave ~160 ms of a deleted record buffered in the device — `known-issues.md` #44).
+
+**Desktop and iOS bind `ForegroundProvider { true }`**, so capture is inert there by decision and
+the history screen — reachable, since it lives in the shared `MainScreen` — stays empty.
+
+The five actions (`Open`, `Close`, `PlayRecord`, `StopRecordPlayback`, `DeleteRecord`) get one
+reducer each in `:features:history`; `HistoryState.records`/`playingId` are mirrored in by
+`HistoryViewModel` from `HistoryStore`'s flows and `PttState.historyPlayingId`. Those two fields
+are **async mirrors**, so `onAction` merges a completed action's result instead of assigning it:
+the reducer's value lands only for a mirror field the reducer itself moved relative to the
+dispatch-time snapshot, and a field the collectors advanced while the action was suspended keeps
+the collectors' fresher value — the raw assignment that used to live there rolled the mirrors
+back on every action (`known-issues.md` #44). The badge is the
+one cross-feature fact and does not go through history at all: `:shared`'s `HistoryBadge` derives
+`unread` from `records` + `lastViewedAt` and is injected straight into `:features:main`'s screen
+root, so
+the `:features:main -> :features:history` edge never has to exist. Behaviour tests live in
+`shared/src/commonTest/.../history/` (capture rules, WAV round-trip, the pump's
+pacing), `jvmCommonTest/.../history/` (the real DataStore-backed store, temp dirs and all), and
+`:features:history`'s own `commonTest` (the five reducers).
 
 ## The relay address
 

@@ -85,20 +85,22 @@ class VoiceRecorder(private val scope: CoroutineScope) : VoiceRecorderContract {
         }
 
         readJob = scope.launch {
-            val buffer = ByteArray(AudioConfig.FRAME_BYTES)
+            // Reads go through the frame loop so every emitted frame is exactly
+            // AudioConfig.FRAME_BYTES: a short or interrupted read carries its remainder to the
+            // next step instead of putting a partial — possibly odd-length, which the protocol
+            // rejects outright — frame on the wire, as desktop and iOS capture already do.
+            val loop = CaptureFrameLoop(
+                source = PcmReadSource { buffer -> record.read(buffer, 0, buffer.size) },
+                emit = { frame -> frames.trySend(frame) },
+            )
             while (isActive && record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                val read = record.read(buffer, 0, buffer.size)
-                when {
-                    read > 0 -> {
-                        // The old code shipped the whole 8192-byte buffer regardless of how
-                        // many bytes were actually read, so a short read transmitted stale
-                        // tail data. Send exactly what was captured.
-                        frames.trySend(buffer.copyOf(read))
-                    }
-                    read < 0 -> {
-                        Timber.e("AudioRecord.read error %d", read)
-                        break
-                    }
+                // The read inside step() blocks until the buffer fills, so this loop neither
+                // busy-spins nor needs a suspend call to yield; cancellation lands as soon as
+                // a read returns.
+                val read = loop.step()
+                if (read < 0) {
+                    Timber.e("AudioRecord.read error %d", read)
+                    break
                 }
             }
         }

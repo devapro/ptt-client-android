@@ -16,15 +16,15 @@ read that rather than assuming.
 ## Commands
 
 ```bash
-./gradlew assembleDebug                       # debug APK (:app, pulling in :shared)
-./gradlew testDebugUnitTest                   # 159 JVM unit tests (:shared, on the androidTarget compilation)
-./gradlew :shared:desktopTest                  # the same 159 tests again, on the desktop compilation
-./gradlew lintDebug                           # :app: 12 pre-existing findings; :shared: 0
+./gradlew assembleDebug                       # debug APK (:app, pulling in :shared, :core, :features-api:*, :features:* and :ui-shell)
+./gradlew testDebugUnitTest                   # 390 JVM unit tests across six modules (:shared, :app, :features-api:settings, the three :features:*), on the androidTarget compilation
+./gradlew desktopTest                         # 378 of the same tests, on the desktop compilation — unqualified runs the task in every KMP module; :app's 12 are Android-only
+./gradlew lintDebug                           # :app: 21 pre-existing findings; every library module: 0
 ./gradlew assembleRelease                     # release APK — unsigned unless PTT_KEYSTORE_PATH and friends are set
-./gradlew build                               # everything :app and :shared build for Android + desktop
+./gradlew build                               # everything :app, :shared and the Phase 2 modules build for Android + desktop
 ./gradlew :desktopApp:run                     # run the desktop app directly
 ./gradlew :desktopApp:packageDeb              # a .deb (packageMsi/packageExe/packageDmg only on their native OS)
-./gradlew -PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64   # frontend-compile iOS, even on Linux
+./gradlew -PenableIosTargets=true :ui-shell:compileKotlinIosSimulatorArm64   # frontend-compile iOS (transitively :shared, :core and the features too), even on Linux
 ```
 
 See [`testing.md`](testing.md) for the full test-class breakdown and
@@ -115,7 +115,9 @@ curl -s https://dl.google.com/dl/android/maven2/<group/path>/<artifact>/<ver>/<a
   | unzip -p - META-INF/com/android/build/gradle/aar-metadata.properties | grep minCompileSdk
 ```
 
-**`:shared` carries the same compileSdk-36 ceiling, and two constraints of its own:**
+**`:shared` — and every other KMP module (`:core`, `:features-api:*`, `:features:*`, `:ui-shell`,
+all of which copy its build file's unusual lines deliberately) — carries the same compileSdk-36
+ceiling, and two constraints of its own:**
 
 - **Compose Multiplatform 1.12.0 wants `androidx.compose.*` at versions that require compileSdk
   37.** `shared/build.gradle.kts`'s `androidMain` dependencies pin the same androidx Compose
@@ -125,15 +127,18 @@ curl -s https://dl.google.com/dl/android/maven2/<group/path>/<artifact>/<ver>/<a
   configurations — `org.jetbrains.androidx.lifecycle`'s Compose Multiplatform artifacts publish
   their *android* target as a substitution onto those exact coordinates, and the 2.11.0 version CMP
   1.12.0 asks for needs compileSdk 37. Read the KDoc on both force sites before touching either.
-- **`:shared` must keep the deprecated `com.android.library` Gradle plugin — do not switch it to
-  `com.android.kotlin.multiplatform.library`.** The new plugin is what Kotlin's own deprecation
-  warning suggests, and the build stays green either way, but switching makes Compose Multiplatform
-  resources (`composeResources/`, `Res.string.*`/`Res.drawable.*`) silently stop packaging into the
+- **`:shared` must keep the deprecated `com.android.library` Gradle plugin — do not switch it (or
+  any module copied from it) to `com.android.kotlin.multiplatform.library`.** The new plugin is
+  what Kotlin's own deprecation warning suggests, and the build stays green either way, but
+  switching makes Compose Multiplatform resources (`composeResources/`,
+  `Res.string.*`/`Res.drawable.*`) silently stop packaging into the
   APK — the app then crashes at launch with a `MissingResourceException`, a known Compose
   Multiplatform issue (JetBrains CMP-9547). Verified for this repo: a release APK built with
   `com.android.library` contains `assets/composeResources/com.github.devapro.pttdroid.shared.resources/`;
-  don't take that on faith after changing the plugin.
-- **Do not add `iosX64()` to `:shared`'s target list.** Compose Multiplatform publishes no
+  don't take that on faith after changing the plugin. (`:shared` is the only module that *has*
+  resources — the single-resource-owner decision — but the plugin rule is what keeps its packaging
+  working through every consumer.)
+- **Do not add `iosX64()` to any module's target list.** Compose Multiplatform publishes no
   `iosX64` variant of `org.jetbrains.compose.runtime:runtime` (or any other Compose artifact), for
   any release back to 1.8.2 — declaring it fails `appleMain` dependency resolution outright, before
   a single line of Kotlin/Native even compiles. iosX64 (Intel simulator) has no real device or
@@ -216,17 +221,21 @@ Details in [`testing.md`](testing.md).
 
 ## iOS
 
-`:shared`'s `iosArm64()`/`iosSimulatorArm64()` targets only exist when the build can
+Every KMP module's `iosArm64()`/`iosSimulatorArm64()` targets only exist when the build can
 actually compile them — a real Mac, or `-PenableIosTargets=true` — see the guard at the top of
-`kotlin { }` in `shared/build.gradle.kts`. On a Linux machine (this one, and this repo's regular
-`ci.yml`) they are absent from a plain `./gradlew build`/`./gradlew projects`, but Linux *can*
-frontend-compile them (klib, not link) with the opt-in flag:
+`kotlin { }` in `shared/build.gradle.kts` (copied into every module's build file). Since Phase 2
+of the module-graph refactor it is **`:ui-shell`** that declares the `PTTdroidShared` framework
+(`:shared`'s iOS targets remain, but produce a klib only). On a Linux machine (this one, and this
+repo's regular `ci.yml`) the targets are absent from a plain `./gradlew build`/`./gradlew projects`,
+but Linux *can* frontend-compile them (klib, not link) with the opt-in flag:
 
 ```bash
-./gradlew -PenableIosTargets=true :shared:compileKotlinIosSimulatorArm64
-./gradlew -PenableIosTargets=true :shared:compileKotlinIosArm64
+./gradlew -PenableIosTargets=true :ui-shell:compileKotlinIosSimulatorArm64
+./gradlew -PenableIosTargets=true :ui-shell:compileKotlinIosArm64
 ```
 
+(`:ui-shell`'s compilations pull `:shared`'s, `:core`'s and the feature modules' as dependency
+tasks, so this one pair covers every `iosMain` in the graph.)
 This is a genuinely useful, cheap gate even without a Mac: it catches a bad `expect`/`actual` pair
 or a cinterop signature error in well under a minute, and it is part of both this repo's normal
 build gate and `ci.yml`. It cannot *link or run* iOS code, though — Kotlin/Native's Apple linker and
@@ -235,12 +244,12 @@ the simulator/device runtime both need a real Apple toolchain.
 On a Mac, with Xcode installed:
 
 ```bash
-./gradlew :shared:embedAndSignAppleFrameworkForXcode   # or let Xcode's build phase do it
-open iosApp/iosApp.xcodeproj                            # build/run the "iosApp" scheme
+./gradlew :ui-shell:embedAndSignAppleFrameworkForXcode   # or let Xcode's build phase do it
+open iosApp/iosApp.xcodeproj                             # build/run the "iosApp" scheme
 ```
 
 `.github/workflows/ios.yml` is where linking and running are actually exercised — a `macos-latest`
-job that compiles `:shared` for `iosSimulatorArm64`, links the framework, then builds
+job that compiles `:ui-shell` for `iosSimulatorArm64`, links the framework, then builds
 `iosApp.xcodeproj` with `xcodebuild`. Treat anything under `iosMain`/`iosApp/` as compile-verified
 but link/runtime-verified only when that job is green — see
 [`platform-support.md`](platform-support.md).

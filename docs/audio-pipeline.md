@@ -23,12 +23,12 @@ the wrong class entirely.
 
 ```
 AudioRecord (VOICE_COMMUNICATION source, 16 kHz mono PCM16)
-    │  read(buffer, 0, 1280)
+    │  read(buffer, 0, 1280)            ← CaptureFrameLoop.step(), via the PcmReadSource seam
     ▼
-buffer.copyOf(read)                    ← exactly the bytes captured
-    │
+buffer.copyOf(read) → FrameAccumulator ← exactly the bytes captured, reshaped into whole frames
+    │  (a short read carries its remainder; only full 1280-byte frames come out)
     ▼
-Channel<ByteArray>(64, DROP_OLDEST)    ← VoiceRecorder.frames
+Channel<ByteArray>(64, DROP_OLDEST)    ← VoiceRecorder.frames  (trySend per emitted frame)
     │
     ▼
 PttController.audioPumpJob  ──▶ connection.sendAudio(chunk)  ──▶ Frame.Binary
@@ -55,13 +55,27 @@ Frame.Binary ──▶ ConnectionEvent.Audio ──▶ PttController.observeEven
                                                 │
                                                 ▼
                                     VoicePlayer.play(pcm)
-                                    AudioTrack.write(WRITE_NON_BLOCKING)
+                                    PlaybackDrainLoop.enqueue (bounded FIFO, drop-oldest)
+                                                │
+                                                ▼
+                                    drain thread ──▶ AudioTrack.write (blocking, full)
 ```
 
 `AudioTrack` is built with `AudioTrack.Builder` and `CONTENT_TYPE_SPEECH`. It is prepared on
 `welcome` and released on disconnect.
 
-There is no jitter buffer beyond `AudioTrack`'s own; on a LAN this is adequate.
+On Android the receive path does not touch the `AudioTrack` itself: `play()` hands the frame to
+`PlaybackDrainLoop` (`:app` `audio/PlaybackDrainLoop.kt`), which queues it and writes it *in full*
+from a dedicated thread — retrying a partial at the offset the device reports. The queue holds up
+to 40 frames (~1.6 s, enough to swallow the connection's whole 64-frame backlog after a CPU stall)
+and drops the oldest on overflow; the device buffer is 10 frames (~400 ms). This exists because
+the old non-blocking write into a 160 ms buffer silently discarded burst arrivals while the
+receiver-side history capture, fed from the same frames, stored them all — live listeners heard
+breaks the stored recording did not have (`known-issues.md` #47).
+
+There is still no jitter buffer in the streaming sense on any platform: frames carry no
+timestamps, so nothing is reordered, re-requested or concealed — the drain loop absorbs arrival
+*timing* (bursts and stalls up to its depth), not loss. On a LAN this is adequate.
 
 ## Output routing and volume
 
@@ -120,9 +134,9 @@ Both classes are owned by `PttController`, and both `release()` methods are idem
 | | `VoiceRecorder` | `VoicePlayer` |
 |---|---|---|
 | Create | lazily in `ensureRecord()`, reused | `prepare()` — returns `Boolean` (no-op, returns `true`, if already built) |
-| Start | `start()` — `startRecording()` + one read coroutine | implicit, `AudioTrack.play()` in `prepare()` |
-| Stop | `stop()` — cancels the read job, `AudioRecord.stop()` | — |
-| Release | `release()` — stops, releases, **nulls the field** | `release()` — stops, releases, **nulls the field**, restores `MODE_NORMAL` if it took it |
+| Start | `start()` — `startRecording()` + one read coroutine | implicit — `AudioTrack.play()` *and* the `PlaybackDrainLoop` thread start inside `prepare()` (Android); the drain coroutine starts with the line (desktop) |
+| Stop | `stop()` — cancels the read job, `AudioRecord.stop()` | `stop()` — cuts off buffered-but-unplayed audio at once (Android: `AudioTrack` pause/flush/play plus the drain loop's queue; desktop queue swap + `stop`/`flush`/`start`; iOS queue swap) and stays ready for further writes. Cancelling the history pump alone left audio of the deleted record in the buffers (`known-issues.md` #44); its only caller is `HistoryPlayback.stop()` |
+| Release | `release()` — stops, releases, **nulls the field** | `release()` — shuts the drain thread down first, then stops and releases the track, **nulls both fields**, restores `MODE_NORMAL` if it took it |
 
 `setOutput` on a live `VoicePlayer` rebuilds the track — `AudioAttributes` are immutable once
 built — which costs a frame or two of silence at the moment the user taps, and that is the moment
@@ -159,18 +173,21 @@ bigEndian=false)`) and the same buffer depth (`AudioConfig.FRAME_BYTES * 4`).
 Two differences from the Android classes, both forced by the `javax.sound.sampled` API rather than
 a change in intent:
 
-- **`TargetDataLine.read` can short-read**, where `AudioRecord.read` on Android is just trimmed to
-  the bytes actually captured. A short, odd-length frame on the wire would violate the protocol's
-  fixed `AudioConfig.FRAME_BYTES` contract, so the read loop assembles frames through
-  `audio/FrameAccumulator.kt` instead of emitting one `read()` call's result directly — it carries
-  any partial frame to the next read and only emits once a full frame's worth of bytes has
-  accumulated. `FrameAccumulatorTest` (`commonTest`) covers exact frames, short reads spread over
+- **`TargetDataLine.read` short-reads routinely**, where `AudioRecord.read` in blocking mode only
+  does so when the recording is stopped or interrupted. Both platforms therefore assemble frames
+  through `audio/FrameAccumulator.kt` instead of emitting one `read()` call's result directly — it
+  carries any partial frame to the next read and only emits once a full frame's worth of bytes has
+  accumulated (Android since `:app`'s `audio/CaptureFrameLoop.kt` wrapped its read loop in one; a
+  short, odd-length frame on the wire would violate the protocol's fixed `AudioConfig.FRAME_BYTES`
+  contract). `FrameAccumulatorTest` (`commonTest`) covers exact frames, short reads spread over
   several calls, an oversized chunk spanning more than one frame, and a remainder carried across
   calls — all hardware-independent.
-- **`SourceDataLine.write` has no non-blocking mode.** Android's `AudioTrack.write` is called with
-  `WRITE_NON_BLOCKING` so the network receive path never stalls; `DesktopVoicePlayer.play` instead
-  hands each frame to a small `Channel(4, DROP_OLDEST)` drained by its own IO coroutine, so a slow
-  or blocked line drops late audio rather than stalling the caller.
+- **`SourceDataLine.write` has no non-blocking mode.** It blocks until the line's internal buffer
+  has room, so `DesktopVoicePlayer.play` hands each frame to a small `Channel(4, DROP_OLDEST)`
+  drained by its own IO coroutine, and a slow or blocked line drops late audio rather than stalling
+  the caller. Android does the same job with a bigger queue: `VoicePlayer.play` feeds
+  `PlaybackDrainLoop` (see *Wire → playback*), whose dedicated thread performs real blocking
+  `AudioTrack.write` calls — full writes and a bounded backlog instead of a silent drop.
 
 No capture/playback device, or one that refuses to open (`AudioSystem.isLineSupported` false, or a
 `LineUnavailableException`/`IllegalArgumentException` from `open()`), is not fatal: the failure is
@@ -273,7 +290,10 @@ up `PttController.PLAYBACK_UNAVAILABLE` — the same way `FakeConnection.failNex
 a bip frame failing without stranding the transmission (`known-issues.md` #38/#39). `audio/FrameAccumulator.kt` is the
 one piece of the desktop implementation that is hardware-independent and gets its own unit test
 (`FrameAccumulatorTest`, `commonTest`); the rest of `DesktopVoiceRecorder`/`DesktopVoicePlayer` can
-only be smoke-tested against real hardware.
+only be smoke-tested against real hardware. The Android read loop has the same seam one level down:
+`:app`'s `audio/CaptureFrameLoop.kt` reads through a `PcmReadSource` function interface, so the
+short-read → exact-frame reshaping is unit-testable on the JVM with a fake source
+(`app/src/test`) without an `AudioRecord`.
 
 On an emulator the microphone usually captures silence. Verification therefore asserts on frame
 flow and floor state rather than on audibility — see [`testing.md`](testing.md). The same caution

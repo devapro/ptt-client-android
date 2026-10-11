@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.sound.sampled.AudioFormat
@@ -31,11 +32,12 @@ private val PCM_FORMAT = AudioFormat(
  * (`AudioRecord`) semantics: fixed-size frames, realtime/lossy backpressure on [frames], a
  * symmetric start/stop/release lifecycle.
  *
- * One difference from Android forces [FrameAccumulator]'s existence: `TargetDataLine.read` can
- * short-read, where `AudioRecord.read` on Android is just trimmed to the bytes actually captured
- * (`docs/known-issues.md` #5). A short, odd-length frame on the wire would violate the protocol's
- * fixed [AudioConfig.FRAME_BYTES] contract, so reads are assembled through the accumulator instead
- * of emitted straight off one `read` call.
+ * One difference from the Android class shapes this loop: `TargetDataLine.read` short-reads
+ * routinely, where `AudioRecord.read` in blocking mode only does so when the recording is
+ * stopped or interrupted. Both feed their reads through [FrameAccumulator] for the same reason
+ * (`docs/known-issues.md` #5): a short, odd-length frame on the wire would violate the
+ * protocol's fixed [AudioConfig.FRAME_BYTES] contract, so reads are assembled into frames
+ * instead of emitted straight off one `read` call.
  *
  * No capture device, or a device that refuses to open, is not fatal: [start] then simply never
  * launches a read loop, [frames] stays empty, and the failure is logged exactly once (not per
@@ -129,9 +131,9 @@ class DesktopVoiceRecorder(private val scope: CoroutineScope) : VoiceRecorderCon
  * Desktop playback via `javax.sound.sampled`, mirroring `:app`'s `VoicePlayer` (`AudioTrack`)
  * semantics.
  *
- * Android's `AudioTrack.write` is called with `WRITE_NON_BLOCKING` so the network receive path
- * never stalls. `SourceDataLine.write` has no non-blocking mode — it blocks until its internal
- * buffer has room — so [play] never calls it directly; frames instead go through a small dropping
+ * Android's `AudioTrack` is fed by `VoicePlayer`'s own drain thread for the same reason
+ * `SourceDataLine.write` has no non-blocking mode — it blocks until its internal buffer has room —
+ * so [play] never calls it directly; frames instead go through a small dropping
  * channel drained by a dedicated IO coroutine, and a slow or stalled line simply loses late audio
  * rather than backing up the caller.
  *
@@ -199,7 +201,15 @@ class DesktopVoicePlayer(private val scope: CoroutineScope) : VoicePlayerContrac
 
         line = opened
         drainJob = scope.launch(Dispatchers.IO) {
-            for (frame in pending) {
+            // Reads the [pending] property every round rather than iterating the channel captured
+            // at launch: [stop] swaps the channel out from under it to discard queued frames, and
+            // a closed old channel must land the loop back on the new one, not end the job.
+            while (isActive) {
+                val frame = try {
+                    pending.receive()
+                } catch (e: ClosedReceiveChannelException) {
+                    continue
+                }
                 val scaled = PcmGain.scale(frame, volume)
                 runCatching { opened.write(scaled, 0, scaled.size) }
             }
@@ -209,6 +219,25 @@ class DesktopVoicePlayer(private val scope: CoroutineScope) : VoicePlayerContrac
 
     /** No second output device on a desktop to move to. See the class KDoc. */
     override fun setOutput(output: AudioOutput) = Unit
+
+    /**
+     * Cuts off buffered playback at once: swaps [pending] (the frames not yet handed to the
+     * line are dropped with the old channel), then `stop()`/`flush()`/`start()` the line —
+     * `stop()` alone keeps the buffer for a later resume; `flush()` is what discards it (see the
+     * `DataLine.flush` contract), and `start()` leaves the line running so live audio written
+     * afterwards is still heard. No-op before [prepare] or after [release]; idempotent.
+     */
+    override fun stop() {
+        val current = line ?: return
+        val old = pending
+        pending = newPendingChannel()
+        old.close()
+        runCatching {
+            if (current.isRunning) current.stop()
+            current.flush()
+            current.start()
+        }
+    }
 
     override fun setVolume(volume: Float) {
         this.volume = AppSettings.clampVolume(volume)

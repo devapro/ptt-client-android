@@ -10,10 +10,15 @@
 local.properties
 
 ### Compose Multiplatform modules ###
-# :app has its own app/.gitignore (/build); these are the other three modules' build outputs,
-# none of which had one before this module existed.
-/shared/build
-/desktopApp/build
+# Unanchored on purpose: `/build` at the top of this file matches only the root project's own
+# directory, and the per-module list that used to sit here (`/shared/build`, `/desktopApp/build`)
+# went stale the moment Phase 2 added `:core`, `:ui-shell`, `:features-api:*` and `:features:*` —
+# 10k+ generated dex/klib files became "untracked work" that one `git add -A` would have committed
+# (known-issues #1's shape). `build/` with no leading slash matches a directory of that name at any
+# depth, so a module added later is covered without an edit here. Safe because nothing tracked lives
+# under any `build/` in this repo — check with `git ls-files | grep -E '(^|/)build/'` before adding
+# a file there. (:app keeps its own app/.gitignore for the same reason in the other direction.)
+build/
 
 ### iOS (iosApp/, Xcode) ###
 /iosApp/build
@@ -29,3 +34,4 @@ xcuserdata/
 keystore.properties
 /app/release/*
 /gradle/gradle-daemon-jvm.properties
+/.qoder/settings.json

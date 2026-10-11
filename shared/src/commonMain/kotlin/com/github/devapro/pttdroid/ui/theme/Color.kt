@@ -33,8 +33,11 @@ internal val GraphiteDim = Color(0xFF556474)
 
 // --- status accents ---------------------------------------------------------------------------
 
-/** The one place a [PttUiStatus] becomes a Compose colour. */
-internal val PttUiStatus.color: Color get() = Color(argb)
+// "The one place a PttUiStatus becomes a Compose colour" — the `PttUiStatus.color` extension that
+// used to sit here — moved to :core's ui/components/UiStatusColor.kt in Phase 5 of the
+// module-graph refactor, with its only two consumers (PTTButton, StatusCard). It stayed a single
+// definition (there is no copy in either direction): the Signal* colours below derive from
+// PttUiStatus.argb directly, so this file never depended on the extension itself.
 
 internal val SignalGreen = Color(PttUiStatus.READY.argb)
 internal val SignalAmber = Color(PttUiStatus.CONNECTING.argb)

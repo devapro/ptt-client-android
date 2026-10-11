@@ -6,6 +6,9 @@ import com.github.devapro.pttdroid.audio.VoicePlayerContract
 import com.github.devapro.pttdroid.audio.VoiceRecorderContract
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.AudioOutput
+import com.github.devapro.pttdroid.history.BackgroundRecordCapture
+import com.github.devapro.pttdroid.history.HistoryPlayback
+import com.github.devapro.pttdroid.history.VoiceRecord
 import com.github.devapro.pttdroid.network.ConnectionEvent
 import com.github.devapro.pttdroid.network.PttConnection
 import com.github.devapro.pttdroid.network.protocol.ErrorCodes
@@ -48,6 +51,10 @@ class PttController(
     private val scope: CoroutineScope,
     private val reconnectPolicy: ReconnectPolicy = ReconnectPolicy(),
     private val keepalivePolicy: KeepalivePolicy = KeepalivePolicy(),
+    /** Saves what arrives while the app is backgrounded. See `history/BackgroundRecordCapture`. */
+    private val historyCapture: BackgroundRecordCapture,
+    /** Replays saved records through [player]. See `history/HistoryPlayback`. */
+    private val historyPlayback: HistoryPlayback,
 ) {
     private val _state = MutableStateFlow(PttState())
     val state: StateFlow<PttState> = _state.asStateFlow()
@@ -56,6 +63,19 @@ class PttController(
     private var eventJob: Job? = null
     private var audioPumpJob: Job? = null
     private var keepaliveJob: Job? = null
+    private var playingIdJob: Job? = null
+
+    init {
+        // The one thing the controller takes *from* its collaborators' state: playback reports
+        // its own id, and PttState — the single source the UI mirrors — carries it. Held as a
+        // job because it is otherwise an endless child of the scope: `shutdown` must end it, or
+        // the scope outlives the controller by a collect that can never return.
+        playingIdJob = scope.launch {
+            historyPlayback.playingId.collect { id ->
+                _state.update { if (it.historyPlayingId != id) it.copy(historyPlayingId = id) else it }
+            }
+        }
+    }
 
     /**
      * Frames received from the relay, counted rather than timed.
@@ -135,7 +155,16 @@ class PttController(
         val current = _state.value
         if (!current.canTalk || current.isTransmitting || current.isRequestingFloor) return
         _state.update { it.copy(isRequestingFloor = true) }
-        scope.launch { connection.send(TalkRequest) }
+        scope.launch {
+            // The send reports whether the frame reached the wire. A null session used to fail
+            // silently here, leaving `isRequestingFloor` set with no request outstanding — the
+            // UI sat waiting and retries were blocked until the next disconnect or a gesture
+            // release. Roll the optimistic flag back on failure instead.
+            if (!connection.send(TalkRequest)) {
+                stopTransmit()
+                _state.update { it.copy(isRequestingFloor = false, isTransmitting = false) }
+            }
+        }
     }
 
     fun releaseTalk() {
@@ -158,6 +187,20 @@ class PttController(
     fun clearError() {
         if (_state.value.lastError == null) return
         _state.update { it.copy(lastError = null) }
+    }
+
+    /**
+     * Replays a stored record through the speaker. Refused while the channel is busy in any
+     * direction — live audio always outranks history, and the floor states are what say when.
+     */
+    fun playHistory(record: VoiceRecord) {
+        val current = _state.value
+        if (current.isTransmitting || current.isRequestingFloor || current.isFloorHeldByOther) return
+        historyPlayback.play(record)
+    }
+
+    fun stopHistoryPlayback() {
+        if (historyPlayback.isPlaying) historyPlayback.stop()
     }
 
     // --- internals ------------------------------------------------------------------------
@@ -202,6 +245,8 @@ class PttController(
                     stopKeepalive()
                     stopTransmit()
                     player.release()
+                    historyCapture.onSessionClosed()
+                    stopHistoryPlayback()
                     _state.update {
                         it.copy(
                             status = ConnectionStatus.Disconnected,
@@ -216,6 +261,10 @@ class PttController(
 
                 is ConnectionEvent.Audio -> {
                     markInbound()
+                    // Live audio owns the speaker: a history replay standing in the way is
+                    // silenced rather than ducked, and the rest of the transmission is heard.
+                    stopHistoryPlayback()
+                    historyCapture.onAudioFrame(event.pcm)
                     player.play(event.pcm)
                 }
 
@@ -322,8 +371,14 @@ class PttController(
 
             is ProtocolError -> {
                 PttLog.w { "Protocol error ${message.code}: ${message.message}" }
-                if (message.code == ErrorCodes.FLOOR_BUSY) {
-                    // Someone beat us to it; make sure we are not left half-transmitting.
+                if (message.code == ErrorCodes.FLOOR_BUSY ||
+                    message.code == ErrorCodes.NOT_FLOOR_HOLDER
+                ) {
+                    // Either code is the server stating authoritatively that the floor is not
+                    // ours: FLOOR_BUSY answers a request we never got, NOT_FLOOR_HOLDER arrives
+                    // when we send audio it believes we do not hold the floor — a contradiction
+                    // with our own transmitting state, and the server is the arbiter. Make sure
+                    // we are not left half-transmitting or stranded on a pending request.
                     stopTransmit()
                     _state.update { it.copy(isRequestingFloor = false, isTransmitting = false) }
                 }
@@ -342,7 +397,15 @@ class PttController(
         val heldByUs = floor.isSelf
         val heldBySomeone = floor.holderId != null
 
+        // The capture reads the same messages the state machine does — it is a second observer of
+        // the floor, not a participant in granting it.
+        historyCapture.onFloor(floor.holderId, floor.holderName, heldByUs)
+
         if (heldByUs && _state.value.isRequestingFloor) {
+            // Taking the floor is also "answering" for the history's purposes: messages the user
+            // replies to within the window leave the list — they were handled, not missed.
+            historyCapture.onAnsweredBySelf()
+            stopHistoryPlayback()
             // Accept only the outstanding request. A repeated or late grant after release must
             // not reopen the microphone or start another broadcast.
             _state.update {
@@ -355,6 +418,7 @@ class PttController(
             }
             startTransmit()
         } else if (!heldByUs) {
+            if (heldBySomeone) stopHistoryPlayback()
             stopTransmit()
             _state.update {
                 it.copy(
@@ -427,6 +491,11 @@ class PttController(
         stopKeepalive()
         eventJob?.cancel()
         eventJob = null
+        playingIdJob?.cancel()
+        playingIdJob = null
+        // The Disconnected event may never come again, so close an in-flight record here too.
+        historyCapture.onSessionClosed()
+        stopHistoryPlayback()
         recorder.release()
         player.release()
     }

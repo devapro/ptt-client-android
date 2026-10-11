@@ -113,6 +113,8 @@
 
     <string name="settings_hands_free">Hands-free</string>
     <string name="settings_floating">Floating PTT button</string>
+    <string name="settings_hardware_buttons">Volume keys and headset button</string>
+    <string name="settings_hardware_buttons_summary">Hold a volume key (app open) or the headset button to talk, release to stop</string>
     <string name="settings_floating_summary">Show a draggable talk button over other apps</string>
     <string name="settings_grant_overlay">Grant “draw over other apps”</string>
     <string name="settings_overlay_required">Permission needed to show the floating button</string>
@@ -134,4 +136,13 @@
     <!-- Permissions -->
     <string name="permission_mic_required">Microphone access is required to talk</string>
     <string name="permission_grant">Grant microphone access</string>
+
+    <!-- Voice record history -->
+    <string name="history">History</string>
+    <string name="cd_history">Open message history</string>
+    <string name="history_empty">Messages received while the app was in the background are saved here</string>
+    <string name="history_unknown_sender">Unknown</string>
+    <string name="cd_play_record">Play message</string>
+    <string name="cd_stop_record">Stop playback</string>
+    <string name="cd_delete_record">Delete message</string>
 </resources>
