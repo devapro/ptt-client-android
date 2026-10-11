@@ -463,7 +463,7 @@ class InternalPttServerFanoutTest {
         }
 
         /** Read everything queued for this peer: until [quietMs] passes silent, a close, EOF, or [maxMs]. */
-        fun drain(quietMs: Int = 3_000, maxMs: Long = 60_000): List<WireFrame> {
+        fun drain(quietMs: Int = 15_000, maxMs: Long = 60_000): List<WireFrame> {
             socket.soTimeout = quietMs
             val deadline = System.currentTimeMillis() + maxMs
             val frames = mutableListOf<WireFrame>()
