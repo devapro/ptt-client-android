@@ -1,0 +1,2 @@
+* The release build is now optimized and shrunk with R8
+* Fixed the Русский option in Settings > Language wrapping onto two lines
