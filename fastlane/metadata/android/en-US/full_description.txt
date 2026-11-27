@@ -18,6 +18,8 @@ main screen, on the floating button, in the widget and in the notification.
 * Keeps talking with the screen off, or while you are in another app, via a foreground service
 * A draggable floating button that shows the channel number and doubles as the transmit control
 * A home-screen widget for transmit and status
+* Message history: a transmission that arrives while the app is in the background is saved on
+  the phone, so you can play it back later. Answering on the channel clears it
 * Light, dark, or follow the system
 * Optional encryption: connect over wss://, trusting a self-hosted relay by its certificate
   fingerprint, with an optional shared access token
@@ -25,7 +27,7 @@ main screen, on the floating button, in the widget and in the notification.
 
 <b>What it does not do</b>
 
-There are no accounts, no message history, no text chat, and no audio compression — it is raw
+There are no accounts, no text chat, no history kept on the relay, and no audio compression — it is raw
 16 kHz mono PCM, which is fine on a LAN and wasteful over a metered connection. The access token
 is one shared secret for the whole channel: there are no per-handset credentials and no way to
 revoke one device.

@@ -18,11 +18,13 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -50,6 +52,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.github.devapro.pttdroid.data.settings.AppSettings
 import com.github.devapro.pttdroid.data.settings.LanguageMode
 import com.github.devapro.pttdroid.data.settings.applyLanguagePreference
@@ -618,6 +621,12 @@ private val LANGUAGE_MODES = listOf(
 /**
  * A short, closed set of choices — every option visible, one tap to change, nothing hidden behind
  * a label the way a dropdown hides it. Two or three options is exactly what this control is for.
+ *
+ * Each label stays on one line and shrinks to fit instead of wrapping. The language row has four
+ * segments on a phone-width card, and a long label ("Русский") next to the selected segment's
+ * check mark used to break mid-word onto a second line and make its segment taller than the rest.
+ * The label never grows past the button's own text size, and never shrinks below
+ * [SEGMENT_LABEL_MIN_SIZE].
  */
 @Composable
 private fun <T> SegmentedChoice(
@@ -632,11 +641,22 @@ private fun <T> SegmentedChoice(
                 onClick = { onSelect(value) },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
             ) {
-                Text(stringResource(label))
+                Text(
+                    text = stringResource(label),
+                    maxLines = 1,
+                    softWrap = false,
+                    autoSize = TextAutoSize.StepBased(
+                        minFontSize = SEGMENT_LABEL_MIN_SIZE,
+                        maxFontSize = LocalTextStyle.current.fontSize,
+                    ),
+                )
             }
         }
     }
 }
+
+/** The smallest a segment label shrinks to before it would stop being comfortably readable. */
+private val SEGMENT_LABEL_MIN_SIZE = 10.sp
 
 /** One message per way the address can be unusable; the format hint when it is fine. */
 private fun ServerAddress.Problem?.message(): StringResource = when (this) {
