@@ -221,6 +221,7 @@ class InternalPttServerC5bVerifyTest {
         @JvmStatic
         @BeforeClass
         fun startServer() {
+            initKotlinRandomBeforeKtor() // RawPeer is a raw socket: see KotlinRandomInit.kt
             port = ServerSocket(0).use { it.localPort }
             server = InternalPttServer()
             server.start(port)
