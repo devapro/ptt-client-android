@@ -15,7 +15,7 @@ Repo: https://github.com/devapro/ptt-client-android.git
 Builds:
   - versionName: 1.0.3
     versionCode: 10003
-    commit: v1.0.3
+    commit: 0714ad4d0536c02650eac7a4402b04fd1d91e6cf
     subdir: app
     gradle:
       - yes
