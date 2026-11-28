@@ -78,6 +78,7 @@ class InternalPttServerFanoutTest {
 
     @Before
     fun setUp() {
+        initKotlinRandomBeforeKtor() // StalledPeer is a raw socket: see KotlinRandomInit.kt
         port = ServerSocket(0).use { it.localPort }
         server = InternalPttServer()
         server.start(port)
@@ -504,6 +505,21 @@ class InternalPttServerFanoutTest {
         return found!!
     }
 
+    /**
+     * How the victim's socket ended, for the audio assertion's message. The stalled peer never
+     * answers a WebSocket ping, so the relay's Ktor pinger closes it with 1011 "Ping timeout"
+     * ~30 s after it connected (15 s period + 15 s timeout); everything relayed has normally
+     * arrived long before then, so audio missing *with* that close means delivery outlasted the
+     * pinger, while no close at all means the drain gave up first (silence, EOF or its cap).
+     */
+    private fun closeReason(frames: List<WireFrame>): String {
+        val close = frames.lastOrNull { it.opcode == 0x8 } ?: return " (no close frame)"
+        val payload = close.payload
+        if (payload.size < 2) return " (closed, no status)"
+        val code = ((payload[0].toInt() and 0xFF) shl 8) or (payload[1].toInt() and 0xFF)
+        return " (closed $code \"${String(payload, 2, payload.size - 2, Charsets.UTF_8)}\")"
+    }
+
     /** A big-endian frame index header plus a byte-exact pattern, see [payloadIndexOf]. */
     private fun framePayload(index: Int): ByteArray = ByteArray(FRAME_SIZE) { j ->
         if (j < 4) {
@@ -539,12 +555,29 @@ class InternalPttServerFanoutTest {
             }
             bob.send(Frame.Text("""{"type":"talk_release"}"""))
             repeat(3) { victim.sendText("""{"type":"ping"}""") }
+            // Bob must not close until the relay has worked through everything above. Ktor reads
+            // a socket far faster than the relay handles frames (each one takes the channel
+            // lock), parking the surplus in its unlimited incoming buffer — and on receiving a
+            // Close it cancels the route handler, so whatever is still buffered is never relayed
+            // and never counted as shed. Closing straight after the flood therefore lost a
+            // host-speed-dependent tail of it: on a 2-core CI runner, 532 of 1600 frames reached
+            // the victim and then nothing more. The relay handles one session's frames strictly
+            // in order, so Bob's own pong arrives only after every frame before it was relayed.
+            bob.send(Frame.Text("""{"type":"ping"}"""))
+            bob.expect<Pong>(timeoutMs = 30_000)
+            // Read the shed count now, not after the drain. A shed only ever happens when audio
+            // is offered, and Bob's pong proves every offer has happened, so it is already final.
+            // After the drain it no longer exists: the counter lives on the victim's session, and
+            // the victim never answers WebSocket pings, so the relay's Ktor pinger closes it
+            // ~30 s after it joined — which is exactly when the drain ends (see [closeReason]).
+            // Read then, a slow host's genuine sheds came back as 0 from a channel that was
+            // already gone ("received 1538 frames, shed 0").
+            val shed = server.droppedAudioFrames(1)
             bob.close() // its leave broadcasts one more peers update to the victim
 
             val frames = victim.drain()
             val texts = frames.filter { it.opcode == 0x1 }.mapNotNull { it.message }
             val audio = frames.filter { it.opcode == 0x2 }
-            val shed = server.droppedAudioFrames(1)
 
             // --- control kinds survive the flood ------------------------------------------------
 
@@ -610,7 +643,8 @@ class InternalPttServerFanoutTest {
             // may still have delivered everything, and one shed with a full delivery is the
             // race, not a loss — that pairing is precisely what production never promised.
             assertTrue(
-                "received ${audio.size} frames, shed $shed of $FLOOD_FRAMES offered",
+                "received ${audio.size} frames, shed $shed of $FLOOD_FRAMES offered" +
+                    closeReason(frames),
                 audio.size + shed >= FLOOD_FRAMES,
             )
 

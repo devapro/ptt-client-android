@@ -55,6 +55,7 @@ class InternalPttServerConnectUrlTest {
 
     @Before
     fun setUp() {
+        initKotlinRandomBeforeKtor() // rawConnect is a raw socket: see KotlinRandomInit.kt
         port = ServerSocket(0).use { it.localPort }
         server = InternalPttServer()
         server.start(port, maxSessionsPerChannel = 1)
